@@ -1,3 +1,43 @@
+##########################################################################################
+## 0. Common functions
+##########################################################################################
+
+pairwise.MLE <- function(data, ML.fun, nondata.col = 1, rm.id.vec = TRUE, ...) {
+  # data: a dataframe of which pairs are to be analyzed
+  # nondata.col: the column number to be ignored for measurement eg. first col (gene names)
+  # name: short name for the distribution
+  data <- as.matrix(data[,-nondata.col])
+  dim.p <- dim(data)[1]
+  comb <- expand.grid(1:dim.p,1:dim.p)
+  if (rm.id.vec)  {rw <- which(comb[,1] > comb[,2])} else {rw <- which(comb[,1] >= comb[,2])}
+  comb <- data.frame(comb[rw,c(2,1)])
+  # [lower.tri(matrix(1:dim.p^2,dim.p),TRUE),][,c(2,1)]
+  # comb <- data.frame(t(combn(1:dim.p,2)))
+  comb$pair <- apply(comb,1,function(x) paste(x,collapse="-"))
+  
+  # empty.result <- ML.fun(xvec = rep(0,3), yvec = rep(0,3))
+  # comb <- cbind(comb, matrix(ncol = dim(empty.result)[2]))
+  # names(comb) <- c(1,2,"pair", names(empty.result))
+  names(comb) <- c(1,2,"pair")
+  
+  MLE <- apply(comb[,1:2], 1, function(s) {
+    x <- data[s[1],-1]
+    y <- data[s[2],-1]
+    return(ML.fun(xvec = x, yvec = y))
+  })
+  MLE <- do.call(rbind, MLE)
+  
+  comb <- cbind(comb, MLE)
+  return(comb)
+}
+if (FALSE) { # example
+  head(pairwise.MLE(data=data[iset.Mm.c2[[1]],], ML.fun = ML.BP))
+}
+
+##########################################################################################
+## 1. Bivariate Poisson
+##########################################################################################
+
 dBP <- function(x, y = NULL, m0, m1, m2, log = FALSE) {
   if (length(x) == 2) {
     y <- x[2]
@@ -8,7 +48,7 @@ dBP <- function(x, y = NULL, m0, m1, m2, log = FALSE) {
   m <- min(x,y); p <- m0/m1/m2
   fun.a <- function(x, y, s, p, adj) {
     ifelse (p == 0, ifelse(s==0, 1, 0), exp(lchoose(x,s)+lchoose(y,s)+lfactorial(s)+ s*log(p) - adj)) 
-    }
+  }
   if (max(x,y) > 100) {adj = 300} else {adj = 0}  # Handle numerical error for large numbers
   if (max(x,y) > 200) {result <- ifelse(log, -Inf, 0)} else {
     f3 <- log(sum(sapply(0:m, function(s) fun.a(x=x, y=y, s=s, p=p, adj=adj)))) + adj
@@ -18,13 +58,12 @@ dBP <- function(x, y = NULL, m0, m1, m2, log = FALSE) {
   if (!is.finite(ifelse(log,exp(result),result))) {result <- 0}
   return(result)
 }
-  # sample data
-  x <- as.numeric(data[iset.Mm.c2[[1]][1],-1])
-  y <- as.numeric(data[iset.Mm.c2[[1]][27],-1])  # cor(x,y) = -0.004 (p=0.9)
-  z <- as.numeric(data[iset.Mm.c2[[1]][2],-1])   # cor(x,z) = 0.107 (p=0.002)
-  z2 <- as.numeric(data[iset.Mm.c2[[1]][10],-1])   # cor(x,z2) = 0.46 (p=0.000)
-
-  # example
+# sample data
+x <- as.numeric(data[iset.Mm.c2[[1]][1],-1])
+y <- as.numeric(data[iset.Mm.c2[[1]][27],-1])  # cor(x,y) = -0.004 (p=0.9)
+z <- as.numeric(data[iset.Mm.c2[[1]][2],-1])   # cor(x,z) = 0.107 (p=0.002)
+z2 <- as.numeric(data[iset.Mm.c2[[1]][10],-1])   # cor(x,z2) = 0.46 (p=0.000)
+if (FALSE) {# example
   dBP(2, 2, 0, 1, 1)
   dBP(100, 100, 0, 1, 1)
   dBP(200, 200, 0, 1, 1)
@@ -44,10 +83,10 @@ dBP <- function(x, y = NULL, m0, m1, m2, log = FALSE) {
   # joint(BP) < pois*pois (off-diagonal)
   dBP(1,3,1,2,2)
   dpois(1,3)*dpois(3,3)
-
-
+}
 
 ML.BP <- function(xvec, yvec, tol = 1e-6) {
+  xvec <- as.numeric(xvec); yvec <- as.numeric(yvec)
   len <- length(xvec)
   # xbar <- mean(xvec)
   # ybar <- mean(yvec)
@@ -65,11 +104,12 @@ ML.BP <- function(xvec, yvec, tol = 1e-6) {
   rownames(result) <- NULL
   return(result)
 }
-  # example
+if (FALSE) { # example
   ML.BP(x,y)
   ML.BP(x,z)
   set.seed(1000); a1 <- rpois(20,1); a2 <- rpois(20,2); a3 <- rpois(20,3)
   ML.BP(a1+a2, a1+a3)
+}
 
 # Numerical calcualtion of MI for bivariate Poisson
 MI.BP <- function(m0, m1, m2, summation = 100) {
@@ -85,16 +125,17 @@ MI.BP <- function(m0, m1, m2, summation = 100) {
           }
         }))))
 }
-  # example
+if (FALSE) {# example
   MI.BP(0.1, 1, 1, summation = 100)
   MI.BP(1e-7, .1, .1, summation = 100)
-
+  
   # example
   ML.BP(x,z2)
   MI.BP(0.2311328, 0.4588672, 1.252617, summation = 100)  #0.039445
   mi.empirical.2(x,z2)  #0.1082
   0.2311328 / sqrt(0.2311328 + 0.4588672) / sqrt(0.2311328 + 1.252617)  # cor 0.2284
   cor(x,z2)  #0.4648
+}
 
 MI.ML.BP <- function(xvec, yvec, tol = 1e-6, summation = 100) {
   MLE <- ML.BP (xvec = xvec, yvec = yvec, tol = tol)
@@ -136,6 +177,11 @@ ML.BP.old <- function(xvec, yvec, tol = 1e-6) {
   return(data.frame(argmax = a.new$argmax, likelihood = a.new$maxvalue))
 }
 
+
+##########################################################################################
+## 2. Bivariate ZIP
+##########################################################################################
+
 dBZIP <- function(x, y = NULL, pp, m0, m1, m2, log = FALSE) {
   fxy <- (1-pp) * dBP (x=x, y=y, m0 = m0, m1 = m1, m2 = m2) + ifelse((x == 0 & y == 0), pp,0)
   if (log) {fxy <- log(fxy)}
@@ -154,7 +200,7 @@ ML.BZIP.old <- function(xvec, yvec, tol = 1e-6) { #MLE based on score equations 
   fun.a <- function(x, y, s, p) {
     if (p == 0) {
       return(data.frame(num = 0, den = ifelse(s==0, 1, 0)))
-      } else {
+    } else {
       den = exp(lchoose(x,s)+lchoose(y,s)+lfactorial(s)+ s*log(p))
       num = den*s
       return(data.frame(num = num, den = den))
@@ -176,7 +222,7 @@ ML.BZIP.old <- function(xvec, yvec, tol = 1e-6) { #MLE based on score equations 
     return(sum(apply(vec, 1, fun.b, p = p)))
   }
   
-
+  
   fun.d <- function(m.vec, vec.s, len, len.s = dim(vec.s)[1]) {
     p <- exp(sum(log(m.vec)*c(1,-1,-1)))
     f00 <- exp(-sum(m.vec)) #%>% print
@@ -258,6 +304,7 @@ ML.BZIP <- function(xvec, yvec, tol = 1e-8, initial = NULL, showFlag = FALSE) { 
   fun.d <- function(param, vec.s, len, len.s = dim(vec.s)[1]) {
     # xi1 = mu0 + mu1, xi2 = mu0 + mu2
     sum.x.y <- apply(vec.s,2,sum)
+    if (sum(sum.x.y) ==0 ) { return(data.frame(pp = 1, mu0 = 0, mu1 = 0, mu2 = 0))} # everything is zero ==> nonestimable, set pi = 0
     # EM algorithm
     iter = 0
     if (showFlag) {print(c("iter", "pi", paste0("mu",0:2)))}
@@ -266,21 +313,27 @@ ML.BZIP <- function(xvec, yvec, tol = 1e-8, initial = NULL, showFlag = FALSE) { 
       iter = iter + 1
       param.old <- param # saving old parameters
       xi <- sum.x.y / len / (1-param[1])
-      
-      result <- optim(par = param[2], lik.profile, vec = vec, pp = param[1], xi1 = xi[1], xi2 = xi[2], lower = 0, upper = min(xi), method="Brent")
+      if (min(xi) == 0 ) {result <- data.frame(par = 0)} else {
+        result <- optim(par = param[2], lik.profile, vec = vec, pp = param[1], xi1 = xi[1], xi2 = xi[2], lower = 0, upper = min(xi), method="Brent")  
+      }
       param[2] <- result$par
       param[c(3,4)] <- xi - param[2]
       p <- exp(sum(log(param[2:4])*c(1,-1,-1)))
       f00 <- exp(-sum(param[2:4])) #%>% print
-      if (len == len.s) { param[1] <- 0} else {
+      if (len == len.s | len.s/len/(1-f00) > 1) { param[1] <- 0} else {
         param[1] <- 1 - len.s/len/(1-f00)  
       }
+      if (len == len.s | param[1] < 0) { param[1] <- 0}
       if (showFlag) {print(c(iter, round(param,5)))}
       if (max(abs(param - param.old)) <= tol) {
+        param <- data.frame(matrix(param,1,4))
+        names(param) <- c("pp", "mu0", "mu1", "mu2")
         return(param)
         break
       } else if (iter >= 100) {
-        return(NA)
+        param <- data.frame(matrix(NA,1,4))
+        names(param) <- c("pp", "mu0", "mu1", "mu2")
+        return(param)
         break
       }  
     }
@@ -295,10 +348,11 @@ ML.BZIP <- function(xvec, yvec, tol = 1e-8, initial = NULL, showFlag = FALSE) { 
   result <- fun.d(param = initial, vec.s = vec.s, len = len, len.s = len.s)
   return(result)
 }
-  # examples
+if (FALSE) {# example
   ML.BZIP(vec[,1], vec[,2], showFlag=TRUE, initial = rep(0,4), tol = 1e-10)
   ML.BZIP(vec[,1], vec[,2], showFlag=TRUE, tol = 1e-8)
   ML.BZIP(extractor(1), extractor(2), initial = rep(0,4), showFlag=TRUE)
+}
 
 # Numerical calcualtion of MI for bivariate Poisson
 MI.BZIP <- function(pp, m0, m1, m2, summation = 100) {
@@ -333,14 +387,16 @@ MI.ML.BZIP <- function(xvec, yvec, tol = 1e-6, summation = 100,...) {
   MI <- MI.BZIP (pp = MLE[1], m0 = MLE[2], m1 = MLE[3], m2 = MLE[4], summation = summation)
   return(MI)
 }
-MI.ML.BZIP(vec[,1], vec[,2])
-
+if (FALSE) {# example
+  MI.ML.BZIP(vec[,1], vec[,2])
+  
   a <- Sys.time()
   MI.ML.BZIP(vec[,1], vec[,2]) #0.15511
   Sys.time() - a  # 12 sec
   a <- Sys.time()
   MI.ML.BP(vec[,1], vec[,2]) #0.2.839e-09
   Sys.time() - a # 5.3 sec
+}
 
 ##### need to update parametric correlation
 cor.ML.BZIP <- function(xvec, yvec, ...) {
@@ -350,29 +406,32 @@ cor.ML.BZIP <- function(xvec, yvec, ...) {
 }
 
 # test of correlation function
-vec2 <- matrix(c(rep(0,100),1,1,1, rep(0,100),3,3,3), 103)
-cor(vec2[,1],vec2[,2])          # 1.00
-cor.ML.BZIP(vec2[,1],vec2[,2])  # 0.60
-cor.ML.BP(vec2[,1],vec2[,2])    # 0.58
+if (FALSE) {
+  vec2 <- matrix(c(rep(0,100),1,1,1, rep(0,100),3,3,3), 103)
+  cor(vec2[,1],vec2[,2])          # 1.00
+  cor.ML.BZIP(vec2[,1],vec2[,2])  # 0.60
+  cor.ML.BP(vec2[,1],vec2[,2])    # 0.58
+  
+  vec2[98,] <- c(2,0); vec2[99,] <- c(0,3)
+  cor(vec2[,1],vec2[,2])          # 0.55
+  cor.ML.BZIP(vec2[,1],vec2[,2])  # 0.83
+  cor.ML.BP(vec2[,1],vec2[,2])    # 0.38
+  
+  vec2 <- vec2[90:103, ]
+  cor(vec2[,1],vec2[,2])          # 0.41
+  cor.ML.BZIP(vec2[,1],vec2[,2])  # 0.78
+  cor.ML.BP(vec2[,1],vec2[,2])    # 0.31
+  
+  vec2 <- vec2[8:14, ]
+  cor(vec2[,1],vec2[,2])          # 0.06
+  cor.ML.BZIP(vec2[,1],vec2[,2])  # 0.70
+  cor.ML.BP(vec2[,1],vec2[,2])    # 0.08
+  table(vec2[,1], vec2[,2])
+  
+  vec2 <- matrix(c(0,0,1,1,1,3,3,0,0,0),5)
+  cor(vec2[,1],vec2[,2])          # -1.00
+  cor.ML.BZIP(vec2[,1],vec2[,2])  # 0.71   # not fitting well
+  cor.ML.BP(vec2[,1],vec2[,2])    # 0.00
+  table(vec2[,1], vec2[,2])
+}
 
-vec2[98,] <- c(2,0); vec2[99,] <- c(0,3)
-cor(vec2[,1],vec2[,2])          # 0.55
-cor.ML.BZIP(vec2[,1],vec2[,2])  # 0.83
-cor.ML.BP(vec2[,1],vec2[,2])    # 0.38
-
-vec2 <- vec2[90:103, ]
-cor(vec2[,1],vec2[,2])          # 0.41
-cor.ML.BZIP(vec2[,1],vec2[,2])  # 0.78
-cor.ML.BP(vec2[,1],vec2[,2])    # 0.31
-
-vec2 <- vec2[8:14, ]
-cor(vec2[,1],vec2[,2])          # 0.06
-cor.ML.BZIP(vec2[,1],vec2[,2])  # 0.70
-cor.ML.BP(vec2[,1],vec2[,2])    # 0.08
-table(vec2[,1], vec2[,2])
-
-vec2 <- matrix(c(0,0,1,1,1,3,3,0,0,0),5)
-cor(vec2[,1],vec2[,2])          # -1.00
-cor.ML.BZIP(vec2[,1],vec2[,2])  # 0.71   # not fitting well
-cor.ML.BP(vec2[,1],vec2[,2])    # 0.00
-table(vec2[,1], vec2[,2])

@@ -58,7 +58,6 @@ library(entropy)  # https://cran.r-project.org/web/packages/entropy/entropy.pdf
                   # https://en.wikipedia.org/wiki/Mutual_information
 # function: pairwise.dep, mi.empirical.2
 
-measure <-  list(cor,mi.empirical)
 length(Mm.c2) # 4722 Gene sets
 
 # Mm.c2.mi.tmp <- lapply(1:2, function(i) pairwise.dep(data[iset.Mm.c2[[i]],], mi.empirical.2, name = "mi"))
@@ -446,7 +445,12 @@ sapply(lev, function(x) polar2(tmp[tmp$nonzero == x,], b="NMI5"))
 ##############################################################################################
 ### 2.7.1 Parametric approach of measuring MI - BvPoi
 ##############################################################################################
+MLE.Geneset1 <- list()
 a <- Sys.time()
+MLE.Geneset1$BP <- pairwise.MLE (data[iset.Mm.c2[[1]],], ML.fun = ML.BP)  ## 34 min
+MLE.Geneset1$BZIP <- pairwise.MLE (data[iset.Mm.c2[[1]],], ML.fun = ML.BZIP) ## ?? min
+Sys.time() - a
+
 Mm.c2.micor.BP <- pairwise.dep(data[iset.Mm.c2[[1]],], list(cor.ML.BP, MI.ML.BP), name = c("cor.BP","MI.BP"), p.value=FALSE)
 Sys.time() %>% print - a # 2 hours
 Mm.c2.micor.BP$cor <- Mm.c2.micor.tmp[[1]]$cor   # adding Pearson correlation (PC)
