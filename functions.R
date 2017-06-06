@@ -91,7 +91,7 @@ nBins <- function(x, type="Sturge") { # number of bins
   else if (type == "Sturge") {Dx <- 1 + log(n, base = 2)}
   return(max(2,round(Dx)))
 }
-mi.empirical.3 <- function(x, y, ...) {mi.empirical(discretize2d(x, y, numBins1 = nBins(x), numBins2 = nBins(y)),...)}
+mi.empirical.3 <- function(x, y, ...) {mi.empirical(discretize2d(x, y, numBins1 = nBins(x), numBins2 = nBins(y)),...)} #Sturge
 mi.empirical.3.SC <- function(x, y, ...) {mi.empirical(discretize2d(x, y, numBins1 = nBins(x, type="Scott"), numBins2 = nBins(y, type="Scott")),...)}
 
 # log-scale aggregating
@@ -226,6 +226,17 @@ NMI4 <- function(x, y, ...) NMI25(x,y,...)$NMI4
 NMI5 <- function(x, y, ...) NMI25(x,y,...)$NMI5
 # computationally redundant, but done for the sake of convenience
 
+NMI.entropy <- function(H1, H2, H12, MI) {  # with arguments of entropies
+  if (is.null(MI)) {MI <- (- H12 + H1 + H2)}
+  NMI2 <- 2* MI / (H1 + H2) ; if (!is.finite(NMI2)) NMI2 <- 0
+  NMI3 <- MI / H12        ; if (!is.finite(NMI3)) NMI3 <- 0
+  NMI4 <- MI / min(H1, H2); if (!is.finite(NMI4)) NMI4 <- 0
+  NMI5 <- MI / sqrt(H1*H2); if (!is.finite(NMI5)) NMI5 <- 0
+  return(data.frame(NMI2 = NMI2, NMI3 = NMI3, NMI4 = NMI4, NMI5 = NMI5))
+}
+NMI.entropy.vec <- Vectorize(NMI.entropy)
+
+
   mi.empirical.2(as.numeric(data[iset.Mm.c2[[1]][7],-1]),as.numeric(data[iset.Mm.c2[[1]][9],-1])) #MI
   entropy(table(as.numeric(data[iset.Mm.c2[[1]][7],-1]),as.numeric(data[iset.Mm.c2[[1]][9],-1]))) #HXY
   entropy(table(as.numeric(data[iset.Mm.c2[[1]][9],-1]))) #HX
@@ -261,3 +272,11 @@ extractor <- function(gene.no , geneset.no = 1, dat=data, nondata.col = 1, genes
   return(extracted)
 }
 extractor(1)
+
+# time calculator
+tt <- function(s){
+  if (s==1) {time.tmp <<- Sys.time() # record time
+  } else if (s==2) { # calculate time
+    return(data.frame(begin = time.tmp, end = Sys.time(), elapsed = Sys.time() - time.tmp))
+  }
+}

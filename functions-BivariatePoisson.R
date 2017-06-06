@@ -1,8 +1,8 @@
 ##########################################################################################
 ## 0. Common functions
 ##########################################################################################
-
-pairwise.MLE <- function(data, ML.fun, nondata.col = 1, rm.id.vec = TRUE, ...) {
+# remove global assign later !!!! <<- 
+pairwise.MLE <- function(data, ML.fun, nondata.col = 1, p.nonzero = TRUE, rm.id.vec = TRUE, ...) {
   # data: a dataframe of which pairs are to be analyzed
   # nondata.col: the column number to be ignored for measurement eg. first col (gene names)
   # name: short name for the distribution
@@ -19,15 +19,25 @@ pairwise.MLE <- function(data, ML.fun, nondata.col = 1, rm.id.vec = TRUE, ...) {
   # comb <- cbind(comb, matrix(ncol = dim(empty.result)[2]))
   # names(comb) <- c(1,2,"pair", names(empty.result))
   names(comb) <- c(1,2,"pair")
-  
   MLE <- apply(comb[,1:2], 1, function(s) {
-    x <- data[s[1],-1]
-    y <- data[s[2],-1]
+    # if (s[1] <= 6 | s[2] <=23) {return(data.frame(matrix(NA,1,4)))} # debug #7,24 has problem
+    x <- data[s[1],]
+    y <- data[s[2],]
+    print(s)   # debug
+    tmp.sss <<- s   # debug
+    tmp.aaa <<- cbind(x,y)   # debug
     return(ML.fun(xvec = x, yvec = y))
   })
   MLE <- do.call(rbind, MLE)
-  
   comb <- cbind(comb, MLE)
+  
+  if (p.nonzero == TRUE) {
+    n <- dim(data)[2]
+    comb$non0.1 <- sapply(1:dim(comb)[1], function(i) {sum(data[comb[i,1],] != 0) / n})
+    comb$non0.2 <- sapply(1:dim(comb)[1], function(i) {sum(data[comb[i,2],] != 0) / n})
+    comb$non0.min <- pmin(comb$non0.1,comb$non0.2)
+  }
+  
   return(comb)
 }
 if (FALSE) { # example
@@ -45,7 +55,7 @@ dBP <- function(x, y = NULL, m0, m1, m2, log = FALSE) {
   }
   f1 <- dpois(x, m1, log = TRUE)
   f2 <- dpois(y, m2, log = TRUE)
-  m <- min(x,y); p <- m0/m1/m2
+  m <- min(x,y); p <- m0/m1/m2; if (m == 0) {p <- 0} # in order not to make p NaN
   fun.a <- function(x, y, s, p, adj) {
     ifelse (p == 0, ifelse(s==0, 1, 0), exp(lchoose(x,s)+lchoose(y,s)+lfactorial(s)+ s*log(p) - adj)) 
   }
@@ -58,6 +68,7 @@ dBP <- function(x, y = NULL, m0, m1, m2, log = FALSE) {
   if (!is.finite(ifelse(log,exp(result),result))) {result <- 0}
   return(result)
 }
+#dBP <- Vectorize(dBP)
 # sample data
 x <- as.numeric(data[iset.Mm.c2[[1]][1],-1])
 y <- as.numeric(data[iset.Mm.c2[[1]][27],-1])  # cor(x,y) = -0.004 (p=0.9)
@@ -112,11 +123,15 @@ if (FALSE) { # example
 }
 
 # Numerical calcualtion of MI for bivariate Poisson
+# instead of MI.BP, use entropy.BP!!
 MI.BP <- function(m0, m1, m2, summation = 100) {
+  if (summation < 2* max(m0 + m1, m0 + m2)) {
+    summation <- 2* max(m0 + m1, m0 + m2)
+  }
   sum(
-    sapply(1:summation, function(y)
+    sapply(0:summation, function(y)
       sum(
-        sapply(1:summation, function(x) {
+        sapply(0:summation, function(x) {
           joint <- dBP(x, y, m0, m1, m2) #%>% print
           marginal1 <- dpois(x, m0 + m1) #%>% print
           marginal2 <- dpois(y, m0 + m2)
@@ -125,6 +140,7 @@ MI.BP <- function(m0, m1, m2, summation = 100) {
           }
         }))))
 }
+
 if (FALSE) {# example
   MI.BP(0.1, 1, 1, summation = 100)
   MI.BP(1e-7, .1, .1, summation = 100)
@@ -178,14 +194,56 @@ ML.BP.old <- function(xvec, yvec, tol = 1e-6) {
 }
 
 
+entropy.BP <- function(m0, m1, m2, summation = 100) {
+  if (summation < 2* max(m0 + m1, m0 + m2)) {
+    summation <- 2* max(m0 + m1, m0 + m2)
+  }
+  marginal1 <- sapply(0:summation, function(s) {dpois(s, m0 + m1)})
+  marginal2 <- sapply(0:summation, function(s) {dpois(s, m0 + m2)})
+  joint <- sapply(0:summation, function(x) {sapply(0:summation, function(y) {dBP(x = x, y = y, m0 = m0, m1 = m1, m2 = m2)})})
+  
+  H1 <- - marginal1 * log(marginal1); H1[!is.finite(H1)] <- 0; H1 <- sum(H1)
+  H2 <- - marginal2 * log(marginal2); H2[!is.finite(H2)] <- 0; H2 <- sum(H2)
+  H12 <- - joint * log(joint);        H12[!is.finite(H12)] <- 0; H12 <- sum(H12)
+  M12 <- max(- H12 + H1 + H2,0)
+  return(data.frame(H1 = H1, H2 = H2, H12 = H12, MI = M12))
+}  
+entropy.BP.vec <- Vectorize(entropy.BP)
+if (FALSE) {  # entropy.BP is faster than MI.BP
+  a <- Sys.time(); entropy.BP(1,1,1); b <- Sys.time(); MI.BP(1,1,1); Sys.time()- b; b-a
+}
+
+cor.BP <- function(m0, m1, m2) {
+  return(m0 / sqrt((m0 + m1)*(m0 + m2)))
+}
+cor.BP.vec <- Vectorize(cor.BP)
+
+
 ##########################################################################################
 ## 2. Bivariate ZIP
 ##########################################################################################
 
+# basic functions for BvZIP
 dBZIP <- function(x, y = NULL, pp, m0, m1, m2, log = FALSE) {
   fxy <- (1-pp) * dBP (x=x, y=y, m0 = m0, m1 = m1, m2 = m2) + ifelse((x == 0 & y == 0), pp,0)
   if (log) {fxy <- log(fxy)}
   return(fxy)
+}
+dBZIP.vec <- Vectorize(dBZIP)
+lik.BZIP <- function(x, y, param, pp = NULL, m0  = NULL, m1  = NULL, m2  = NULL){
+  if (is.null(pp)|is.null(m0)|is.null(m1)|is.null(m2)) {
+    pp = param[1]; m0 = param[2]; m1 = param[3]; m2 = param[4]
+  } 
+  sum(dBZIP.vec(x, y, pp = pp, m0 = m0, m1 = m1, m2 = m2, log=TRUE))
+}
+rBZIP <- function(n, pp, m0, m1, m2) {
+  z <- rbinom(n,1,pp)
+  common.tmp <- rpois(n,m0)
+  x.tmp <- rpois(n,m1)
+  y.tmp <- rpois(n,m2)
+  x <- (common.tmp + x.tmp)*(1-z)
+  y <- (common.tmp + y.tmp)*(1-z)
+  return(data.frame(x=x, y=y))
 }
 
 
@@ -265,11 +323,11 @@ ML.BZIP.old <- function(xvec, yvec, tol = 1e-6) { #MLE based on score equations 
 }
 
 
-ML.BZIP <- function(xvec, yvec, tol = 1e-8, initial = NULL, showFlag = FALSE) { #MLE based on score equations : fail (not convex)
+ML.BZIP.old2 <- function(xvec, yvec, tol = 1e-8, initial = NULL, showFlag = FALSE) { #MLE based on score equations : fail (not convex)
   len <- length(xvec)          # n
-  vec <- cbind(xvec, yvec)
+  vec <- data.frame(xvec=xvec, yvec=yvec)
   vec.s <- vec[apply(vec,1,sum) != 0,]  # nonzero pair (at least one is nonzero)
-  len.s <- dim(vec.s)[1]       # n - n* (number of nonzero pair)
+  len.s <- dim(vec.s)[1]       # n* (number of nonzero pair)
   
   fun.a <- function(x, y, s, p) {
     if (p == 0) {
@@ -311,6 +369,7 @@ ML.BZIP <- function(xvec, yvec, tol = 1e-8, initial = NULL, showFlag = FALSE) { 
     if (showFlag) {print(c(iter, round(param,5)))}
     repeat {
       iter = iter + 1
+      # print(lik(vec, pp=param[1], m0=param[2], m1=param[3], m2=param[4])) # debug
       param.old <- param # saving old parameters
       xi <- sum.x.y / len / (1-param[1])
       if (min(xi) == 0 ) {result <- data.frame(par = 0)} else {
@@ -330,7 +389,8 @@ ML.BZIP <- function(xvec, yvec, tol = 1e-8, initial = NULL, showFlag = FALSE) { 
         names(param) <- c("pp", "mu0", "mu1", "mu2")
         return(param)
         break
-      } else if (iter >= 100) {
+      } else if (iter >= 50) {
+        print("iteration exceeded")
         param <- data.frame(matrix(NA,1,4))
         names(param) <- c("pp", "mu0", "mu1", "mu2")
         return(param)
@@ -338,6 +398,106 @@ ML.BZIP <- function(xvec, yvec, tol = 1e-8, initial = NULL, showFlag = FALSE) { 
       }  
     }
   }
+  if (len.s == 1) { # when there is only one nonzero pair, pi should be 0
+    result.a <- (ML.BP(xvec=xvec, yvec=yvec)[,1:3])
+    return(data.frame(pp= 0, mu0 = result.a$mu0, mu1 = result.a$mu1, mu2 = result.a$mu2))
+  } else {
+    if (is.null(initial)) { # when initial(starting point) is not provided
+      initial <- rep(0,4)
+      initial[1] <- 1 - len.s/len # inital guess for pi
+      initial[3:4] <- apply(vec.s, 2, sum)/len.s
+      initial[2] <- min(initial[3:4])
+      initial[3:4] <- initial[3:4] - initial[2]
+    }
+    result <- fun.d(param = initial, vec.s = vec.s, len = len, len.s = len.s)
+    return(result)
+  }
+}
+
+# formal EM algorithm
+ML.BZIP.old3 <- function(xvec, yvec, tol = 1e-8, initial = NULL, showFlag = FALSE) { #MLE based on score equations : fail (not convex)
+  len <- length(xvec)          # n
+  vec <- data.frame(xvec=xvec, yvec=yvec)
+  vec.s <- vec[apply(vec,1,sum) != 0,]  # nonzero pair (at least one is nonzero)
+  len.s <- dim(vec.s)[1]       # n* (number of nonzero pair)
+  len.0 <- len - len.s         # n0
+  sum.x.y <- apply(vec,2,sum)  # mu0+mu1, mu0+mu2
+  
+  fun.a <- function(x, y, s, p) {
+    if (p == 0) {
+      return(data.frame(num = 0, den = ifelse(s==0, 1, 0)))
+    } else {
+      den = exp(lchoose(x,s)+lchoose(y,s)+lfactorial(s)+ s*log(p))
+      num = den*s
+      return(data.frame(num = num, den = den))
+    }
+  }
+  fun.b <- function(vec, p) {
+    if (length(vec) == 2) {
+      y <- as.numeric(vec[2])
+      x <- as.numeric(vec[1])
+    }
+    m <- min(x, y)
+    # a <- as.data.frame(sapply(0:m, function(s) {print(c(x,y,s,p)); return(fun.a(x, y, s, p))})) %>% print
+    a <- as.data.frame(sapply(0:m, function(s) fun.a(x, y, s, p)))
+    a[,] <- unlist(a)
+    b <- apply(a, 1, sum)
+    b <- b[1] / b[2]
+    return(b)
+  }
+  fun.c <- function(vec, p) {    # getting B
+    return(sum(apply(vec, 1, fun.b, p = p)))
+  }
+  fun.c.profile <- function(vec, mu0, pp, mu.x.y) {    # solve for mu0
+    p = mu0 / (mu.x.y[1] - mu0) / (mu.x.y[2] - mu0)
+    return((fun.c(vec, p) / len / (1-pp) - mu0)^2)
+  }
+  xi.k <- function(param) {   #update xi = E(Delta_i | obs'd, kth param)
+    return(param[1] / (param[1] + (1-param[1]) *exp(- param %*% c(0,1,1,1) )))
+  }
+  
+  fun.d <- function(param, vec.s, len, len.s = dim(vec.s)[1]) {
+    if (sum(sum.x.y) ==0 ) { return(data.frame(pp = 0, mu0 = 0, mu1 = 0, mu2 = 0))} # everything is zero ==> nonestimable, set pi = 0
+    if (min(sum.x.y) ==0 ) { return(data.frame(pp = 0, mu0 = 0, mu1 = sum.x.y[1]/len, mu2 = sum.x.y[2]/len))} # everything is zero ==> nonestimable, set pi = 0
+    # EM algorithm
+    iter = 0
+    if (showFlag) {print(c("iter", "pi", paste0("mu",0:2)))}
+    if (showFlag) {print(c(iter, round(param,5)))}
+    repeat {
+      iter = iter + 1
+      # print(lik(vec, pp=param[1], m0=param[2], m1=param[3], m2=param[4])) # debug
+      param.old <- param # saving old parameters
+      
+    if (min(sum.x.y) == 0 ) {result <- data.frame(par = 0)} else {
+      result <- optim(par = param[2], lik.profile, vec = vec, pp = param[1], xi1 = xi[1], xi2 = xi[2], lower = 0, upper = min(xi), method="Brent")
+    }
+      
+      xi <- xi.k(param)
+      param[1] <- len.0/len*xi
+      mu.x.y <- sum.x.y / len / (1 - param[1])
+      param[2] <- optim(param[2], fun.c.profile, lower = 0, upper = min(mu.x.y), vec = vec.s, pp = param[1], mu.x.y = mu.x.y, method="Brent")$par
+      param[3:4] <- mu.x.y - param[2]
+      
+      # if (len == len.s | param[1] < 0) { param[1] <- 0}
+      if (showFlag) {print(c(iter, round(param,5)))}
+      if (max(abs(param - param.old)) <= tol) {
+        param <- data.frame(matrix(param,1,4))
+        names(param) <- c("pp", "mu0", "mu1", "mu2")
+        return(param)
+        break
+      } else if (iter >= 50) {
+        print("iteration exceeded")
+        param <- data.frame(matrix(NA,1,4))
+        names(param) <- c("pp", "mu0", "mu1", "mu2")
+        return(param)
+        break
+      }  
+    }
+  }
+  #if (len.s == 1) { # when there is only one nonzero pair, pi should be 0
+  #  result.a <- (ML.BP(xvec=xvec, yvec=yvec)[,1:3])
+  #  return(data.frame(pp= 0, mu0 = result.a$mu0, mu1 = result.a$mu1, mu2 = result.a$mu2))
+  #} else {
   if (is.null(initial)) { # when initial(starting point) is not provided
     initial <- rep(0,4)
     initial[1] <- 1 - len.s/len # inital guess for pi
@@ -345,13 +505,128 @@ ML.BZIP <- function(xvec, yvec, tol = 1e-8, initial = NULL, showFlag = FALSE) { 
     initial[2] <- min(initial[3:4])
     initial[3:4] <- initial[3:4] - initial[2]
   }
+  if (initial[1] == 0) {
+    initial[1] <- 0.01
+  }
   result <- fun.d(param = initial, vec.s = vec.s, len = len, len.s = len.s)
   return(result)
 }
+
+# formal EM algorithm
+ML.BZIP <- function(xvec, yvec, tol = 1e-6, initial = NULL, showFlag = FALSE) { #MLE based on score equations : fail (not convex)
+  len <- length(xvec)          # n
+  vec <- data.frame(xvec=xvec, yvec=yvec)
+  vec.s <- vec[apply(vec,1,sum) != 0,]  # nonzero pair (at least one is nonzero)
+  len.s <- dim(vec.s)[1]       # n* (number of nonzero pair)
+  len.0 <- len - len.s         # n0
+  sum.x.y <- apply(vec,2,sum)  # mu0+mu1, mu0+mu2
+  
+  fun.a <- function(x, y, s, p) {
+    if (p == 0) {
+      return(data.frame(num = 0, den = ifelse(s==0, 1, 0)))
+    } else {
+      den = exp(lchoose(x,s)+lchoose(y,s)+lfactorial(s)+ s*log(p))
+      num = den*s
+      return(data.frame(num = num, den = den))
+    }
+  }
+  fun.b <- function(vec, p) {
+    if (length(vec) == 2) {
+      y <- as.numeric(vec[2])
+      x <- as.numeric(vec[1])
+    }
+    m <- min(x, y)
+    # a <- as.data.frame(sapply(0:m, function(s) {print(c(x,y,s,p)); return(fun.a(x, y, s, p))})) %>% print
+    a <- as.data.frame(sapply(0:m, function(s) fun.a(x, y, s, p)))
+    a[,] <- unlist(a)
+    b <- apply(a, 1, sum)
+    b <- b[1] / b[2]
+    return(b)
+  }
+  fun.c <- function(vec, p) {    # getting B
+    return(sum(apply(vec, 1, fun.b, p = p)))
+  }
+  fun.c.profile <- function(vec, mu0, pp, mu.x.y) {    # solve for mu0
+    return(-lik.BZIP(x = vec[,1], y= vec[,2], pp=pp, m0 = mu0, m1 = mu.x.y[1] - mu0, m2 = mu.x.y[2] -mu0))
+  }
+  xi.k <- function(param) {   #update xi = E(Delta_i | obs'd, kth param)
+    return(param[1] / (param[1] + (1-param[1]) *exp(- param %*% c(0,1,1,1) )))
+  }
+  
+  fun.d <- function(param, vec.s, len, len.s = dim(vec.s)[1]) {
+    if (sum(sum.x.y) ==0 ) { return(data.frame(pp = 0, mu0 = 0, mu1 = 0, mu2 = 0))} # everything is zero ==> nonestimable, set pi = 0
+    if (min(sum.x.y) ==0 ) { return(data.frame(pp = 0, mu0 = 0, mu1 = sum.x.y[1]/len, mu2 = sum.x.y[2]/len))} # everything is zero ==> nonestimable, set pi = 0
+    # EM algorithm
+    iter = 0
+    if (showFlag) {print(c("iter", "pi", paste0("mu",0:2), "loglik"))}
+    if (showFlag) {print(c(iter, round(param,5), lik.BZIP(xvec,yvec, param)))}
+    repeat {
+      iter = iter + 1
+      # print(lik(vec, pp=param[1], m0=param[2], m1=param[3], m2=param[4])) # debug
+      param.old <- param # saving old parameters
+      
+      #if (min(sum.x.y) == 0 ) {result <- data.frame(par = 0)} else {
+      #  result <- optim(par = param[2], lik.BZIP, x = vec[,1], y = vec[,2], pp = param[1], xi1 = xi[1], xi2 = xi[2], lower = 0, upper = min(xi), method="Brent")
+      #}
+      
+      xi <- xi.k(param)
+      param[1] <- len.0/len*xi
+      mu.x.y <- sum.x.y / len / (1 - param[1])
+      param[2] <- optim(param[2], fun.c.profile, lower = 0, upper = min(mu.x.y), vec = vec.s, pp = param[1], mu.x.y = mu.x.y, method="Brent")$par
+      param[3:4] <- mu.x.y - param[2]
+      
+      # if (len == len.s | param[1] < 0) { param[1] <- 0}
+      if (showFlag) {print(c(iter, round(param,5), lik.BZIP(xvec, yvec, param)))}
+      if (max(abs(param - param.old)) <= tol) {
+        param <- data.frame(matrix(param,1,4))
+        names(param) <- c("pp", "mu0", "mu1", "mu2")
+        return(param)
+        break
+      } else if (iter >= 1000) {
+        print("iteration exceeded")
+        param <- data.frame(matrix(NA,1,4))
+        names(param) <- c("pp", "mu0", "mu1", "mu2")
+        return(param)
+        break
+      }  
+    }
+  }
+  #if (len.s == 1) { # when there is only one nonzero pair, pi should be 0
+  #  result.a <- (ML.BP(xvec=xvec, yvec=yvec)[,1:3])
+  #  return(data.frame(pp= 0, mu0 = result.a$mu0, mu1 = result.a$mu1, mu2 = result.a$mu2))
+  #} else {
+  if (is.null(initial)) { # when initial(starting point) is not provided
+    initial <- rep(0,4)
+    initial[1] <- 1 - len.s/len # inital guess for pi
+    initial[3:4] <- apply(vec.s, 2, sum)/len.s
+    initial[2] <- min(initial[3:4])
+    initial[3:4] <- initial[3:4] - initial[2]
+  }
+  if (initial[1] == 0) {
+    initial[1] <- 0.01
+  }
+  result <- fun.d(param = initial, vec.s = vec.s, len = len, len.s = len.s)
+  return(result)
+}
+if (FALSE) {
+  ML.BZIP(tmp.1[,1],tmp.1[,2],showFlag=T) # 0.085183 0.3744193 0.04096429 0.08468888
+  lik.BZIP(tmp.1[,1],tmp.1[,2], pp=.08511, m0 = .3744, m1 = .04096, m2=.0847) #lik = -55
+  lik.BZIP(tmp.1[,1],tmp.1[,2], pp=.5, m0 = 1, m1 = .1, m2=.1) #lik = -59
+  # far away from truth
+  
+}
+
+
+
 if (FALSE) {# example
   ML.BZIP(vec[,1], vec[,2], showFlag=TRUE, initial = rep(0,4), tol = 1e-10)
   ML.BZIP(vec[,1], vec[,2], showFlag=TRUE, tol = 1e-8)
   ML.BZIP(extractor(1), extractor(2), initial = rep(0,4), showFlag=TRUE)
+  ML.BZIP(rep(0,100), rep(0,100), initial = rep(0,4), showFlag=TRUE)
+  # For all 0 pairs, identifiability issue: same likelihood for (pi=1) and (pi=0)
+  ML.BZIP(c(1,rep(0,99)), rep(0,100), initial = rep(0,4), showFlag=TRUE)
+  ML.BZIP(c(1,rep(0,799)), rep(0,800), initial = rep(0,4), showFlag=TRUE)
+  ML.BZIP(c(1,rep(0,799)), rep(0,800), initial = c(799/800,0,0,0), showFlag=TRUE) # not converging. initial should be all zero
 }
 
 # Numerical calcualtion of MI for bivariate Poisson
@@ -397,6 +672,55 @@ if (FALSE) {# example
   MI.ML.BP(vec[,1], vec[,2]) #0.2.839e-09
   Sys.time() - a # 5.3 sec
 }
+
+#### simulation to check if ML works okay
+set.seed(1); tt(1)
+result <- data.frame(pp= NA, mu0 = NA, mu1 = NA, mu2 = NA)
+for (i in 1:30) {
+  print (c(i, "/ 30"))
+  tmp.1 <- rBZIP(50, .5, 1, 1, 1)
+  result[i,] <- ML.BZIP(tmp.1[,1], tmp.1[,2])
+  print(result[i,])
+}
+result; tt(2)
+apply(result,2,mean) # 0.507, 0.865, 1.148, 1.169
+
+set.seed(1); tt(1)
+result2 <- result3 <- data.frame(pp= NA, mu0 = NA, mu1 = NA, mu2 = NA)
+for (i in 1:30) {
+  print (c(i, "/ 30"))
+  tmp.1 <- rBZIP(50, .5, 1, .1, .1)
+  result2[i,] <- ML.BZIP(tmp.1[,1], tmp.1[,2])
+  result3[i,] <- ML.BZIP(tmp.1[,1], tmp.1[,2], initial = c(.5,1,.1,.1))
+  print(result2[i,])
+  print(result3[i,])
+}
+result2;result3; tt(2) #1.7 mins
+apply(result2,2,mean,na.rm=T) # 0.4727396 0.9906099 0.1171386 0.1099863 
+apply(result3,2,mean,na.rm=T) # 0.4727392 0.9906087 0.1171385 0.1099862  okay!
+
+lik.BZIP(tmp.1[,1], tmp.1[,2], c(0.62369159, 0.04185936, 1.45443309, 1.44852183 ))
+lik.BZIP(tmp.1[,1], tmp.1[,2], c(0.62369159, 1, .1, .1 ))
+ML.BZIP(tmp.1[,1],tmp.1[,2],showFlag=T)
+
+entropy.BZIP <- function(pp, m0, m1, m2, summation = 100) {
+  if (summation < 2* max(m0 + m1, m0 + m2)) {
+    summation <- 2* max(m0 + m1, m0 + m2)
+  }
+  joint <- sapply(0:summation, function(x) {sapply(0:summation, function(y) {dBP(x = x, y = y, m0 = m0, m1 = m1, m2 = m2)})})
+  joint <- joint *(1-pp)
+  joint[1,1] <- joint[1,1] + pp
+  marginal1 <- apply(joint,1,sum)
+  marginal1 <- apply(joint,2,sum)
+  
+  H1 <- - marginal1 * log(marginal1); H1[!is.finite(H1)] <- 0; H1 <- sum(H1)
+  H2 <- - marginal2 * log(marginal2); H2[!is.finite(H2)] <- 0; H2 <- sum(H2)
+  H12 <- - joint * log(joint);        H12[!is.finite(H12)] <- 0; H12 <- sum(H12)
+  M12 <- max(- H12 + H1 + H2,0)
+  return(data.frame(H1 = H1, H2 = H2, H12 = H12, MI = M12))
+}  
+entropy.BZIP.vec <- Vectorize(entropy.BZIP)
+
 
 ##### need to update parametric correlation
 cor.ML.BZIP <- function(xvec, yvec, ...) {

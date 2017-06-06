@@ -49,14 +49,16 @@ names(iset.Mm.c2) <- names(Mm.c2)
 ###################################################################################################
 ### Section 2. pairwise association - MI & cor
 ###################################################################################################
+library(entropy)  # https://cran.r-project.org/web/packages/entropy/entropy.pdf
+# https://en.wikipedia.org/wiki/Mutual_information
+# function: pairwise.dep, mi.empirical.2
+library("gridExtra") #grid.arrange
 
 
 ###################################################################################################
 ### 2.1 MI & cor - computing associations
 ###################################################################################################
-library(entropy)  # https://cran.r-project.org/web/packages/entropy/entropy.pdf
-                  # https://en.wikipedia.org/wiki/Mutual_information
-# function: pairwise.dep, mi.empirical.2
+
 
 length(Mm.c2) # 4722 Gene sets
 
@@ -114,7 +116,7 @@ head(Mm.c2.micor.tmp[[1]])
 png("plot2-2-3.png", width = 480, height = 240, units = "px")
 plot2.2.3 <- plot(Mm.c2.micor.tmp[[1]]$cor.p.val,Mm.c2.micor.tmp[[1]]$MI.p.val,xlab="p(cor)", ylab="p(MI)")
 dev.off()
-
+par()
 # 2.2.3.1 explanation for the upper-right cluster
 head(Mm.c2.micor.tmp[[1]][Mm.c2.micor.tmp[[1]]$cor.p.val>0.8 & Mm.c2.micor.tmp[[1]]$MI.p.val>=0.5,])
 Mm.c2.micor.tmp[[1]][1:30,]
@@ -259,10 +261,11 @@ dev.off()
 ###################################################################################################
 
 ## aggregation (Sturge's rule : mi.empirical.3)
-Mm.c2.micor.bin <- pairwise.dep(data[iset.Mm.c2[[1]],], list(cor, mi.empirical.3), name = c("cor","MI"), p.value=FALSE,n.sample=200)
-head(Mm.c2.micor.bin)
+Mm.c2.micor.bin <- list()
+Mm.c2.micor.bin[[1]] <- pairwise.dep(data[iset.Mm.c2[[1]],], list(cor, mi.empirical.3), name = c("cor","MI"), p.value=FALSE,n.sample=200)
+head(Mm.c2.micor.bin[[1]])
 # restoring the redundant pairs 1-2 => 1-2 & 2-1
-tmp2 <- redundant(Mm.c2.micor.bin)
+tmp2 <- redundant(Mm.c2.micor.bin[[1]])
 tmp2 <- rbind(tmp, tmp2)
 tmp2$aggr <- rep(c("nominal","aggregated"), each=dim(tmp)[1])
 
@@ -282,7 +285,7 @@ head(Mm.c2.micor.log)
 Mm.c2.micor.log2 <- pairwise.dep(data[iset.Mm.c2[[1]],], list(cor, mi.empirical.log2), name = c("cor","MI"), p.value=FALSE)  # no p-value b/c of long time
 head(Mm.c2.micor.log2)
 # restoring the redundant pairs 1-2 => 1-2 & 2-1
-tmp2 <- redundant(Mm.c2.micor.bin)
+tmp2 <- redundant(Mm.c2.micor.bin[[1]])
 tmp3 <- redundant(Mm.c2.micor.log); tmp3[,c("cor.p.val","MI.p.val")] <- NA
 tmp4 <- redundant(Mm.c2.micor.log2); tmp4[,c("cor.p.val","MI.p.val")] <- NA
 tmp3 <- rbind(tmp, tmp2, tmp3, tmp4)
@@ -297,8 +300,9 @@ png2(plot2.4.2, width = 480, height = 270)
 
 
 ## aggregation (Scott's rule : mi.empirical.3 with type=Scott)
-Mm.c2.micor.bin2 <- pairwise.dep(data[iset.Mm.c2[[1]],], list(cor, mi.empirical.3.SC), name = c("cor","MI"), p.value=FALSE,n.sample=200, type="Scott")
-head(Mm.c2.micor.bin2)
+Mm.c2.micor.bin2 <- list()
+Mm.c2.micor.bin2[[1]] <- pairwise.dep(data[iset.Mm.c2[[1]],], list(cor, mi.empirical.3.SC), name = c("cor","MI"), p.value=FALSE,n.sample=200, type="Scott")
+head(Mm.c2.micor.bin2[[1]])
 # restoring the redundant pairs 1-2 => 1-2 & 2-1
 tmp2 <- redundant(Mm.c2.micor.bin2)
 # tmp2 <- rbind(tmp, tmp2)
@@ -312,6 +316,188 @@ plot2.4.3 <- ggplot(tmp2[tmp2$"1" %in% c(3,13,15),], aes(MI, cor, label=pair)) +
   xlim(c(0,0.45))
 plot2.4.3
 png2(plot2.4.3, width = 480, height = 120)
+
+
+###################################################################################################
+### 2.4.1 Comparing bin rules
+###################################################################################################
+## Comparing the ranks of Sturge's and Scott's methods (Geneset 1)
+# i. rank plot
+comparebin1 <- data.frame(original = Mm.c2.micor.tmp[[1]]$MI,
+                          Sturge = Mm.c2.micor.bin[[1]]$MI, 
+                          Scott = Mm.c2.micor.bin2[[1]]$MI)
+comparebin1 <- comparebin1[complete.cases(comparebin1),] #remove NA rows (each method has different rows of NA)
+comparebin1 <- data.frame(original = rank(comparebin1$original, na.last="keep", ties.method = "average"),
+                          Sturge = rank(comparebin1$Sturge, na.last = "keep", ties.method = "average"), 
+                          Scott = rank(comparebin1$Scott, na.last = "keep", ties.method = "average"))
+
+plot2.4.4 <- ggplot(comparebin1, aes(Sturge, Scott)) +
+  geom_point() + ggtitle("Comparing ranks of MI for each binning method (Geneset 1)")
+
+# ii. WRS test: not sig.
+wilcox.test(comparebin1$Sturge, comparebin1$Scott)
+
+# repeat with Geneset 2
+Mm.c2.micor.bin[[2]] <- pairwise.dep(data[iset.Mm.c2[[2]],], list(cor, mi.empirical.3), name = c("cor","MI"), p.value=FALSE,n.sample=200)
+Mm.c2.micor.bin2[[2]] <- pairwise.dep(data[iset.Mm.c2[[2]],], list(cor, mi.empirical.3.SC), name = c("cor","MI"), p.value=FALSE,n.sample=200, type="Scott")
+
+comparebin2 <- data.frame(original = Mm.c2.micor.tmp[[2]]$MI,
+                          Sturge = Mm.c2.micor.bin[[2]]$MI, 
+                          Scott = Mm.c2.micor.bin2[[2]]$MI)
+comparebin2 <- comparebin2[complete.cases(comparebin2),] #remove NA rows (each method has different rows of NA)
+comparebin2 <- data.frame(original = rank(comparebin2$original, na.last="keep", ties.method = "average"),
+                          Sturge = rank(comparebin2$Sturge, na.last = "keep", ties.method = "average"), 
+                          Scott = rank(comparebin2$Scott, na.last = "keep", ties.method = "average"))
+
+plot2.4.4B <- ggplot(comparebin2, aes(Sturge, Scott)) +
+  geom_point() + ggtitle("Comparing ranks of MI for each binning method (Geneset 1)")
+wilcox.test(comparebin2$Sturge, comparebin2$Scott)
+
+png2(plot2.4.4, width = 480, height = 480)
+png2(plot2.4.4B, width = 480, height = 480)
+
+### comparing binned MI with original (unbinned)
+plot2.4.4C <- ggplot(comparebin1[complete.cases(comparebin1),], aes(y=original, x=Sturge)) +
+  geom_point() + ggtitle("Original vs Sturge (Geneset 1)")
+plot2.4.4D <- ggplot(comparebin1[complete.cases(comparebin1),], aes(y=original, x=Scott)) +
+  geom_point() + ggtitle("Original vs Scott (Geneset 1)")
+png2(plot2.4.4C, height=480, width=480)
+png2(plot2.4.4D, height=480, width=480)
+
+# ii. WRS test: not sig.
+wilcox.test(comparebin1$original[complete.cases(comparebin1)], comparebin1$Sturge) #p=.9994
+wilcox.test(comparebin1$original[complete.cases(comparebin1)], comparebin1$Scott)  #p=1
+
+
+
+comparebin0 <- data.frame(original = Mm.c2.micor.tmp[[1]]$MI,
+                          Sturge = Mm.c2.micor.bin[[1]]$MI, 
+                          Scott = Mm.c2.micor.bin2[[1]]$MI)
+ggplot(comparebin0[complete.cases(comparebin0),], aes(y=original, x=Sturge)) +
+  geom_point() + ggtitle("Original vs Sturge (Geneset 1)")
+ggplot(comparebin0[complete.cases(comparebin0),], aes(y=original, x=Scott)) +
+  geom_point() + ggtitle("Original vs Scott (Geneset 1)")
+
+###################################################################################################
+### 2.4.2 Computation times for bin rules
+###################################################################################################
+# 800 cells of data
+a <- extractor(1)
+b <- extractor(2)
+dim(table(a,b))  #21 by 5 table
+
+tmp.1 <- tmp.2 <- tmp.3 <-  vector()
+for (i in 401:800) {
+  tt(1); mi.empirical.2(a[1:i],b[1:i]); tmp.1[i-400] <- tt(2)$elapsed     #unbinned
+  tt(1); mi.empirical.3(a[1:i],b[1:i]); tmp.2[i-400] <- tt(2)$elapsed     #Sturge
+  tt(1); mi.empirical.3.SC(a[1:i],b[1:i]); tmp.3[i-400] <- tt(2)$elapsed  #Scott
+}
+time.check <- data.frame(original=tmp.1, Sturge = tmp.2, Scott=tmp.3, n = 401:800)
+#remove outliers > 0.01
+time.check <- time.check[time.check$original <0.01 & time.check$Sturge <0.01 & time.check$Scott <0.01, ]
+
+plot2.4.5 <- ggplot(time.check, aes(y=original, x=Sturge)) +
+  geom_point(aes(col=n)) + ggtitle("Elapsed time: Original vs Sturge (Geneset 1)") +
+  geom_abline(intercept=0, slope=1, linetype, color="red", size=0.1)
+plot2.4.5B <- ggplot(time.check, aes(y=original, x=Scott)) +
+  geom_point(aes(col=n)) + ggtitle("Elapsed time: Original vs Scott (Geneset 1)") +
+  geom_abline(intercept=0, slope=1, linetype, color="red", size=0.1)
+plot2.4.5C <- ggplot(time.check, aes(y=Sturge, x=Scott)) +
+  geom_point(aes(col=n)) + ggtitle("Elapsed time: Sturge vs Scott (Geneset 1)") +
+  geom_abline(intercept=0, slope=1, linetype, color="red", size=0.1)
+
+png2(plot2.4.5, height=480, width=480)
+png2(plot2.4.5B, height=480, width=480)
+png2(plot2.4.5C, height=480, width=480)
+
+# another pair 71 by 28 table
+a <- extractor(10)
+b <- extractor(3)
+dim(table(a,b)) #71 by 28 table
+tmp.1 <- tmp.2 <- tmp.3 <-  vector()
+for (i in 401:800) {
+  tt(1); mi.empirical.2(a[1:i],b[1:i]); tmp.1[i-400] <- tt(2)$elapsed     #unbinned
+  tt(1); mi.empirical.3(a[1:i],b[1:i]); tmp.2[i-400] <- tt(2)$elapsed     #Sturge
+  tt(1); mi.empirical.3.SC(a[1:i],b[1:i]); tmp.3[i-400] <- tt(2)$elapsed  #Scott
+}
+time.check <- data.frame(original=tmp.1, Sturge = tmp.2, Scott=tmp.3, n = 401:800)
+#remove outliers > 0.01
+time.check <- time.check[time.check$original <0.01 & time.check$Sturge <0.01 & time.check$Scott <0.01, ]
+
+plot2.4.5D <- ggplot(time.check, aes(y=original, x=Sturge)) +
+  geom_point(aes(col=n)) + ggtitle("Elapsed time: Original vs Sturge (Geneset 1)") +
+  geom_abline(intercept=0, slope=1, linetype, color="red", size=0.1)
+plot2.4.5E <- ggplot(time.check, aes(y=original, x=Scott)) +
+  geom_point(aes(col=n)) + ggtitle("Elapsed time: Original vs Scott (Geneset 1)") +
+  geom_abline(intercept=0, slope=1, linetype, color="red", size=0.1)
+plot2.4.5F <- ggplot(time.check, aes(y=Sturge, x=Scott)) +
+  geom_point(aes(col=n)) + ggtitle("Elapsed time: Sturge vs Scott (Geneset 1)") +
+  geom_abline(intercept=0, slope=1, linetype, color="red", size=0.1)
+png2(plot2.4.5D, height=480, width=480)
+png2(plot2.4.5E, height=480, width=480)
+png2(plot2.4.5F, height=480, width=480)
+
+
+
+####################################################################################################
+## 2.4.3 sensitivity of certain cells, and robustness test of binning
+####################################################################################################
+
+# pairs with p(MI) <5%, MI > 0.01
+tmp.1 <- Mm.c2.micor.tmp[[1]][Mm.c2.micor.tmp[[1]]$MI.p.val>0.05 & Mm.c2.micor.tmp[[1]]$MI > 0.01,]
+tmp.1$pair
+table(extractor(1), extractor(3))
+
+# Finding the first off-diagonal entries and re-calculate MI without that cell
+tmp.1$MI.loo <- apply(tmp.1, 1, function(a) {
+  x <- extractor(as.numeric(a[1]))
+  y <- extractor(as.numeric(a[2]))
+  z <- (x*y > 0) # off-diagonal cells
+  z2 <- which(z==TRUE)[1]
+  MI <- mi.empirical.2(x[-z2], y[-z2])
+  return(MI)
+})
+tmp.1$num.offdiag <- apply(tmp.1, 1, function(a) {
+  x <- extractor(as.numeric(a[1]))
+  y <- extractor(as.numeric(a[2]))
+  z <- (x*y > 0) # off-diagonal cells
+  sum(z)
+})
+
+# binning
+
+tmp.1$MI.St <- Mm.c2.micor.bin[[1]][Mm.c2.micor.tmp[[1]]$MI.p.val>0.05 & Mm.c2.micor.tmp[[1]]$MI > 0.01,"MI"]
+tmp.1$MI.Sc <- Mm.c2.micor.bin2[[1]][Mm.c2.micor.tmp[[1]]$MI.p.val>0.05 & Mm.c2.micor.tmp[[1]]$MI > 0.01,"MI"]
+head(tmp.1)
+tmp.1$MI.St.loo <- apply(tmp.1, 1, function(a) {
+  x <- extractor(as.numeric(a[1]))
+  y <- extractor(as.numeric(a[2]))
+  z <- (x*y > 0) # off-diagonal cells
+  z2 <- which(z==TRUE)[1]
+  MI <- mi.empirical.3(x[-z2], y[-z2])
+  return(MI)
+})
+tmp.1$MI.Sc.loo <- apply(tmp.1, 1, function(a) {
+  x <- extractor(as.numeric(a[1]))
+  y <- extractor(as.numeric(a[2]))
+  z <- (x*y > 0) # off-diagonal cells
+  z2 <- which(z==TRUE)[1]
+  MI <- mi.empirical.3.SC(x[-z2], y[-z2])
+  return(MI)
+})
+
+# sensitivity(recalc MI over full MI) per number of off-diagonal cells (both nonzero)
+png("plot2-4B-3-1.png", height=300, width=800)
+par (mfrow=c(1,3))
+plot(tmp.1$num.offdiag, tmp.1$MI.loo/tmp.1$MI, ylim=c(0,1), xlab = "# of off-diag cells", ylab = "MI change (LOO/original)", main = "original MI")  # as expected: if there are only few off-diag cells, more change expected.
+plot(tmp.1$num.offdiag, tmp.1$MI.St.loo/tmp.1$MI.St, ylim=c(0,1), xlab = "# of off-diag cells", ylab = "MI change (LOO/original)", main = "Sturge MI")  # Sturge binning: Still changes happen with similiar degree when leaving one out.
+plot(tmp.1$num.offdiag, tmp.1$MI.Sc.loo/tmp.1$MI.Sc, ylim=c(0,1), xlab = "# of off-diag cells", ylab = "MI change (LOO/original)", main = "Scott MI")  # Scott binning: Still changes happen with similiar degree when leaving one out.
+dev.off()
+
+
+
+
+
 
 
 ###################################################################################################
@@ -445,11 +631,6 @@ sapply(lev, function(x) polar2(tmp[tmp$nonzero == x,], b="NMI5"))
 ##############################################################################################
 ### 2.7.1 Parametric approach of measuring MI - BvPoi
 ##############################################################################################
-MLE.Geneset1 <- list()
-a <- Sys.time()
-MLE.Geneset1$BP <- pairwise.MLE (data[iset.Mm.c2[[1]],], ML.fun = ML.BP)  ## 34 min
-MLE.Geneset1$BZIP <- pairwise.MLE (data[iset.Mm.c2[[1]],], ML.fun = ML.BZIP) ## ?? min
-Sys.time() - a
 
 Mm.c2.micor.BP <- pairwise.dep(data[iset.Mm.c2[[1]],], list(cor.ML.BP, MI.ML.BP), name = c("cor.BP","MI.BP"), p.value=FALSE)
 Sys.time() %>% print - a # 2 hours
@@ -471,6 +652,75 @@ plot( Mm.c2.micor.BP$MI.BP, Mm.c2.micor.tmp[[1]]$MI, xlab = "MI(BP)", ylab="Empi
 abline(coef=c(0,1))
 plot( Mm.c2.micor.BP$cor.BP, Mm.c2.micor.tmp[[1]]$cor, xlab = "cor(BP)", ylab="Pearson correlation")
 abline(coef=c(0,1))
+dev.off()
+
+
+##############################################################################################
+### 2.7.1B Parametric approach of measuring MI - BvPoi  (Calc entropy, NMI)
+##############################################################################################
+MLE.Geneset1 <- list()
+a <- Sys.time()
+MLE.Geneset1$BP <- pairwise.MLE (data[iset.Mm.c2[[1]],], ML.fun = ML.BP)  ## 28 min  # To be done again
+# MLE.Geneset1$BZIP <- pairwise.MLE (data[iset.Mm.c2[[1]],], ML.fun = ML.BZIP) ## ?? min
+a <- Sys.time()
+b <- entropy.BP.vec(m0 = MLE.Geneset1$BP$mu0, m1 = MLE.Geneset1$BP$mu1, m2 = MLE.Geneset1$BP$mu2) #1.3 hr
+Sys.time() - a 
+b2 <- cbind(MLE.Geneset1$BP,t(b))
+MLE.Geneset1$BP <- b2; #rm(b, b2)
+# run updated pairwise.MLE in fn.BvPoisson (p.nonzero added)
+# MLE.Geneset1$BP <- cbind(MLE.Geneset1$BP, Mm.c2.micor.BP[,c("non0.1",  "non0.2", "non0.min")]) # run this one time
+
+b <- cor.BP.vec(m0 = MLE.Geneset1$BP$mu0, m1 = MLE.Geneset1$BP$mu1, m2 = MLE.Geneset1$BP$mu2)
+MLE.Geneset1$BP$cor.BP <- b
+
+# adding PC
+MLE.Geneset1$BP$cor <- Mm.c2.micor.tmp[[1]][,"cor"]
+
+b <- NMI.entropy.vec(H1 = MLE.Geneset1$BP$H1, H2 = MLE.Geneset1$BP$H2, H12 = MLE.Geneset1$BP$H12, MI = MLE.Geneset1$BP$MI)
+b2 <- cbind(MLE.Geneset1$BP,t(b))
+MLE.Geneset1$BP <- b2; rm(b, b2)
+
+class(MLE.Geneset1$BP$NMI2)
+class(unlist(MLE.Geneset1$BP$MI))
+MLE.Geneset1$BP[,c("NMI2","NMI3","NMI4","NMI5")] <- apply(MLE.Geneset1$BP[,c("NMI2","NMI3","NMI4","NMI5")],2,unlist)
+
+
+# need to modify the code... aes??
+plot2.7.1.3A <-  ggplot(transform(MLE.Geneset1$BP, nonzero = cut(non0.min, non0.cut)), aes(label=pair)) +
+  facet_grid(. ~ nonzero, labeller=labeller(.rows = label_both, .cols = label_value)) +
+  geom_point(aes(x = NMI2, y = cor, color=1-non0.min)) +   
+  ggtitle(paste0("parametric NMI2 & PC by zero counts - Geneset 1"))
+
+plot2.7.1.3B <-  ggplot(transform(MLE.Geneset1$BP, nonzero = cut(non0.min, non0.cut)), aes(label=pair)) +
+  facet_grid(. ~ nonzero, labeller=labeller(.rows = label_both, .cols = label_value)) +
+  geom_point(aes(x = NMI3, y = cor, color=1-non0.min)) +   
+  ggtitle(paste0("parametric NMI3 & PC by zero counts - Geneset 1"))
+
+plot2.7.1.3C <-  ggplot(transform(MLE.Geneset1$BP, nonzero = cut(non0.min, non0.cut)), aes(label=pair)) +
+  facet_grid(. ~ nonzero, labeller=labeller(.rows = label_both, .cols = label_value)) +
+  geom_point(aes(x = NMI4, y = cor, color=1-non0.min)) +   
+  ggtitle(paste0("parametric NMI4 & PC by zero counts - Geneset 1"))
+
+plot2.7.1.3D <-  ggplot(transform(MLE.Geneset1$BP, nonzero = cut(non0.min, non0.cut)), aes(label=pair)) +
+  facet_grid(. ~ nonzero, labeller=labeller(.rows = label_both, .cols = label_value)) +
+  geom_point(aes(x = NMI5, y = cor, color=1-non0.min)) +   
+  ggtitle(paste0("parametric NMI5 & PC by zero counts - Geneset 1"))
+
+png("plot2-7-1-3.png",  height=800, width=480)
+grid.arrange( plot2.7.1.3B, plot2.7.1.3A, plot2.7.1.3D, plot2.7.1.3C, nrow=4)
+dev.off()
+
+# NMI vs Parametric Cor
+plot2.7.1.4A <-  ggplot(transform(MLE.Geneset1$BP, nonzero = cut(non0.min, non0.cut)), aes(label=pair)) +
+  facet_grid(. ~ nonzero, labeller=labeller(.rows = label_both, .cols = label_value)) +
+  geom_point(aes(x = NMI2, y = cor.BP, color=1-non0.min)) +   
+  ggtitle(paste0("parametric NMI2 & PC by zero counts - Geneset 1"))
+plot2.7.1.4D <-  ggplot(transform(MLE.Geneset1$BP, nonzero = cut(non0.min, non0.cut)), aes(label=pair)) +
+  facet_grid(. ~ nonzero, labeller=labeller(.rows = label_both, .cols = label_value)) +
+  geom_point(aes(x = NMI5, y = cor.BP, color=1-non0.min)) +   
+  ggtitle(paste0("parametric NMI5 & PC by zero counts - Geneset 1"))
+png("plot2-7-1-4.png", height=400, width=480)
+grid.arrange( plot2.7.1.4A, plot2.7.1.4D, nrow=2)
 dev.off()
 
 ##############################################################################################
