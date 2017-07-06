@@ -280,3 +280,8 @@ tt <- function(s){
     return(data.frame(begin = time.tmp, end = Sys.time(), elapsed = Sys.time() - time.tmp))
   }
 }
+
+MSE <- function(vec, mean) {
+  n <- length(vec)
+  return(mean((vec-mean)^2))
+}

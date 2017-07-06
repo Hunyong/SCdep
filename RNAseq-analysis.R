@@ -631,9 +631,10 @@ sapply(lev, function(x) polar2(tmp[tmp$nonzero == x,], b="NMI5"))
 ##############################################################################################
 ### 2.7.1 Parametric approach of measuring MI - BvPoi
 ##############################################################################################
-
+## a <- Mm.c2.micor.BP
+tt(1)
 Mm.c2.micor.BP <- pairwise.dep(data[iset.Mm.c2[[1]],], list(cor.ML.BP, MI.ML.BP), name = c("cor.BP","MI.BP"), p.value=FALSE)
-Sys.time() %>% print - a # 2 hours
+tt(2) # 2.1 hours
 Mm.c2.micor.BP$cor <- Mm.c2.micor.tmp[[1]]$cor   # adding Pearson correlation (PC)
 
 head(Mm.c2.micor.BP)
@@ -659,12 +660,11 @@ dev.off()
 ### 2.7.1B Parametric approach of measuring MI - BvPoi  (Calc entropy, NMI)
 ##############################################################################################
 MLE.Geneset1 <- list()
-a <- Sys.time()
+tt(1)
 MLE.Geneset1$BP <- pairwise.MLE (data[iset.Mm.c2[[1]],], ML.fun = ML.BP)  ## 28 min  # To be done again
-# MLE.Geneset1$BZIP <- pairwise.MLE (data[iset.Mm.c2[[1]],], ML.fun = ML.BZIP) ## ?? min
-a <- Sys.time()
+tt(2) #30 min
 b <- entropy.BP.vec(m0 = MLE.Geneset1$BP$mu0, m1 = MLE.Geneset1$BP$mu1, m2 = MLE.Geneset1$BP$mu2) #1.3 hr
-Sys.time() - a 
+tt(2) #1.4 hr
 b2 <- cbind(MLE.Geneset1$BP,t(b))
 MLE.Geneset1$BP <- b2; #rm(b, b2)
 # run updated pairwise.MLE in fn.BvPoisson (p.nonzero added)
@@ -683,9 +683,8 @@ MLE.Geneset1$BP <- b2; rm(b, b2)
 class(MLE.Geneset1$BP$NMI2)
 class(unlist(MLE.Geneset1$BP$MI))
 MLE.Geneset1$BP[,c("NMI2","NMI3","NMI4","NMI5")] <- apply(MLE.Geneset1$BP[,c("NMI2","NMI3","NMI4","NMI5")],2,unlist)
+head(MLE.Geneset1$BP)
 
-
-# need to modify the code... aes??
 plot2.7.1.3A <-  ggplot(transform(MLE.Geneset1$BP, nonzero = cut(non0.min, non0.cut)), aes(label=pair)) +
   facet_grid(. ~ nonzero, labeller=labeller(.rows = label_both, .cols = label_value)) +
   geom_point(aes(x = NMI2, y = cor, color=1-non0.min)) +   
@@ -726,4 +725,133 @@ dev.off()
 ##############################################################################################
 ### 2.7.2 Parametric approach of measuring MI - BvZIP
 ##############################################################################################
+
+tt(1)
+MLE.Geneset1$BZIP <- pairwise.MLE(data[iset.Mm.c2[[1]],], ML.fun = ML.BZIP)  ## 43min
+tt(2)
+tt(1)
+tmp.2 <- MLE.Geneset1$BZIP[complete.cases(MLE.Geneset1$BZIP),]
+b <- entropy.BZIP.vec(pp = tmp.2$pp, m0 = tmp.2$mu0, m1 = tmp.2$mu1, m2 = tmp.2$mu2) #1.2 hr
+tt(2)
+tmp.3 <- data.frame(matrix(,nrow=dim(MLE.Geneset1$BZIP)[1],4))
+names(tmp.3) <- c("H1", "H2", "H12", "MI")
+tmp.3[complete.cases(MLE.Geneset1$BZIP),] <- matrix(as.numeric(t(b)),ncol=4)
+b2 <- cbind(MLE.Geneset1$BZIP,tmp.3)
+MLE.Geneset1$BZIP <- b2; #rm(b, b2)
+MLE.Geneset1$BZIP$cor <- Mm.c2.micor.tmp[[1]]$cor
+
+### Adjusted MI (Ignore pi of BvZIP and calculate MI)
+tt(1)
+tmp.2 <- MLE.Geneset1$BZIP[complete.cases(MLE.Geneset1$BZIP),]
+b <- entropy.BP.vec(m0 = tmp.2$mu0, m1 = tmp.2$mu1, m2 = tmp.2$mu2)[4,] #1.2 hr
+tt(2)
+tmp.3 <- data.frame(MI.adj=rep(NA,dim(MLE.Geneset1$BZIP)[1]))
+tmp.3[complete.cases(MLE.Geneset1$BZIP),] <- unlist(b)
+b2 <- cbind(MLE.Geneset1$BZIP,tmp.3)
+MLE.Geneset1$BZIP <- b2; #rm(b, b2)
+
+
+
+plot2.7.2.1 <-  ggplot(transform(MLE.Geneset1$BZIP, nonzero = cut(non0.min, non0.cut)), aes(MI, cor, label=pair)) +
+  facet_grid(. ~ nonzero, labeller=labeller(.rows = label_both, .cols = label_value)) +
+  geom_point(aes(color=1-non0.min)) + ggtitle(paste0("PMI(BZIP) vs Pearson Cor by zero counts - Geneset 1"))
+png2(plot2.7.2.1, width = 720, height = 360)
+
+# BZIP vs BP
+plot2.7.2.2 <-  ggplot(transform(MLE.Geneset1$BZIP, nonzero = cut(non0.min, non0.cut)), aes(as.numeric(MLE.Geneset1$BP$MI), MI, label=pair)) +
+  geom_point(aes(color=1-non0.min)) + ggtitle(paste0("PMI(BZIP) vs PMI(BP) by zero counts - Geneset 1")) +
+  xlab("PMI by BP model") + ylab("PMI by BZIP model")
+png2(plot2.7.2.2, width = 720, height = 360)
+
+a <- cbind(MLE.Geneset1$BZIP$pair,MLE.Geneset1$BZIP$MI,MLE.Geneset1$BP$MI); a[a[,2]>.55,]
+
+a <- MLE.Geneset1$BZIP; num <- 19; b <- (a$"1"== num | a$"2" == num)
+ggplot(transform(MLE.Geneset1$BZIP[b,], nonzero = cut(non0.min, non0.cut)), aes(as.numeric(MLE.Geneset1$BP$MI[b]), MI, label=pair)) +
+  geom_point(aes(color=1-non0.min)) + ggtitle(paste0("PMI(BZIP) vs PMI(BP) by zero counts - Geneset 1")) +
+  xlab("PMI by BP model") + ylab("PMI by BZIP model")
+
+# EMI: 0.185, PMI(BvZIP): 0.701, PMI(BP): 0.190
+a[a$pair=="3-19",]  #BvZIP 
+(MLE.Geneset1$BP[MLE.Geneset1$BP$pair == "3-19",]) # BP
+Mm.c2.micor.tmp[[1]][Mm.c2.micor.tmp[[1]]$pair == "3-19",] #EMI
+
+# EMI: 0.214, PMI(BvZIP): 0.627, PMI(BP): 0.002
+a[a$pair=="18-19",]  #BvZIP   
+(MLE.Geneset1$BP[MLE.Geneset1$BP$pair == "18-19",]) # BP
+Mm.c2.micor.tmp[[1]][Mm.c2.micor.tmp[[1]]$pair == "18-19",] #EMI
+# Adjust PMI(BvZIP) value into a third (pi=0.66 => 1/(1-0.66))
+
+
+# BZIP vs EMI
+plot2.7.2.3 <-  ggplot(transform(MLE.Geneset1$BZIP, nonzero = cut(non0.min, non0.cut)), aes(Mm.c2.micor.tmp[[1]]$MI, MI, label=pair)) +
+  geom_point(aes(color=1-non0.min)) + ggtitle(paste0("PMI(BZIP) vs EMI by zero counts - Geneset 1")) +
+  xlab("EMI") + ylab("PMI by BZIP model")
+png2(plot2.7.2.3, width = 720, height = 360)
+
+
+
+# PMI(adj.BvZIP) vs PMI(BP): Almost linear relationship (BP is slightly larger)
+plot2.8.3B.1 <-  ggplot(transform(MLE.Geneset1$BZIP, nonzero = cut(non0.min, non0.cut)), aes(as.numeric(MLE.Geneset1$BP$MI), MI.adj, label=pair)) +
+  geom_point(aes(color=1-non0.min)) + ggtitle(paste0("adjusted PMI(BZIP) vs PMI(BP) by zero counts - Geneset 1")) +
+  xlab("PMI by BP model") + ylab("adjusted PMI by BZIP model") + geom_abline(intercept=0, slope=1, linetype, color="red", size=0.1)
+png2(plot2.8.3B.1, width = 720, height = 360)
+
+# PMI(adj.BvZIP) vs EMI
+plot2.8.3B.2 <-  ggplot(transform(MLE.Geneset1$BZIP, nonzero = cut(non0.min, non0.cut)), aes(Mm.c2.micor.tmp[[1]]$MI, MI.adj, label=pair)) +
+  geom_point(aes(color=1-non0.min)) + ggtitle(paste0("adjusted PMI(BZIP) vs EMI by zero counts - Geneset 1")) +
+  xlab("EMI") + ylab("adjusted PMI by BZIP model") + geom_abline(intercept=0, slope=1, linetype, color="red", size=0.1)
+png2(plot2.8.3B.2, width = 720, height = 360)
+
+# PMI(adj.BvZIP) vs Pearson correlation
+plot2.8.3B.3 <-  ggplot(transform(MLE.Geneset1$BZIP, nonzero = cut(non0.min, non0.cut)), aes(MI.adj, cor, label=pair)) +
+  facet_grid(. ~ nonzero, labeller=labeller(.rows = label_both, .cols = label_value)) +
+  geom_point(aes(color=1-non0.min)) + ggtitle(paste0("PC vs adjusted PMI(BZIP) by zero counts - Geneset 1")) +
+  xlab("adjusted PMI by BZIP model") + ylab("cor") + geom_abline(intercept=0, slope=1, linetype, color="red", size=0.1)
+png2(plot2.8.3B.3, width = 720, height = 360)
+
+
+##############################################################################################
+### 2.7.3 Parametric approach of measuring MI - BvZIP.B
+##############################################################################################
+
+tt(1)
+MLE.Geneset1$BZIP.B <- pairwise.MLE(data[iset.Mm.c2[[1]],], ML.fun = ML.BZIP.B2)  ## 1.9hrs
+tt(2)
+  { tmp <- MLE.Geneset1$BZIP.B[is.na(MLE.Geneset1$BZIP.B$p1),]
+    for (i in 1:(dim(tmp)[1])) { #Lowered tolerance to 1e-5
+      #[1] "1-25"  "5-25"  "5-29"  "7-12"  "7-32"  "7-37"  "7-39"  "7-45"  "7-51"  "7-53"  "8-25"  "9-12" 
+      #[13] "9-32"  "9-37"  "9-39"  "9-45"  "9-51"  "9-53"  "10-25" "11-25" "12-32" "12-52" "13-25" "17-25"
+      #[25] "18-25" "18-29" "19-25" "21-25" "21-29" "22-25" "22-29" "23-25" "25-28" "25-31" "25-34" "25-36"
+      #[37] "25-43" "25-46" "25-47" "25-49" "25-54" "25-57" "25-58" "29-31" "29-42" "29-43" "29-46" "29-47"
+      #[49] "29-57" "32-37" "32-39" "32-45" "32-51" "32-52" "32-53" "37-52" "39-52" "40-46" "40-47" "40-49"
+      #[61] "40-54" "45-52" "51-52" "52-53"
+      print(i)
+      tmp[i,4:10] <- ML.BZIP.B2(extractor(tmp[i,1]),extractor(tmp[i,2]), showFlag=T, maxiter=1000, tol=1e-5)
+    }
+    for (i in c(11,25,26)) { # Lowered tolerance to 5e-4
+      print(i)
+      tmp[i,4:10] <- ML.BZIP.B2(extractor(tmp[i,1]),extractor(tmp[i,2]), showFlag=T, maxiter=2000, tol=5e-4)
+    }
+    MLE.Geneset1$BZIP.B[is.na(MLE.Geneset1$BZIP.B$p1),] <- tmp  # plugging in
+    }
+
+
+
+tt(1)
+tmp.2 <- MLE.Geneset1$BZIP.B[complete.cases(MLE.Geneset1$BZIP.B),]
+b <- entropy.BZIP.B.vec(p1 = tmp.2$p1, p2 = tmp.2$p2, p3 = tmp.2$p3, p4 = tmp.2$p4,
+                         m0 = tmp.2$mu0, m1 = tmp.2$mu1, m2 = tmp.2$mu2) # 52mins
+tt(2)
+tmp.3 <- data.frame(matrix(,nrow=dim(MLE.Geneset1$BZIP.B)[1],4))
+names(tmp.3) <- c("H1", "H2", "H12", "MI")
+tmp.3[complete.cases(MLE.Geneset1$BZIP.B),] <- matrix(as.numeric(t(b)),ncol=4)
+b2 <- cbind(MLE.Geneset1$BZIP.B,tmp.3)
+MLE.Geneset1$BZIP.B <- b2; #rm(b, b2)
+MLE.Geneset1$BZIP.B$cor <- Mm.c2.micor.tmp[[1]]$cor
+
+# BZIP vs BZIP.B
+plot2.7.3.1 <-  ggplot(transform(MLE.Geneset1$BZIP.B, nonzero = cut(non0.min, non0.cut)), aes(as.numeric(MLE.Geneset1$BZIP$MI), MI, label=pair)) +
+  geom_point(aes(color=1-non0.min)) + ggtitle(paste0("PMI(BZIP(B)) vs PMI(BZIP) by zero counts - Geneset 1")) +
+  xlab("PMI by BZIP model") + ylab("PMI by BZIP(B) model")
+png2(plot2.7.3.1, width = 720, height = 360)
 
