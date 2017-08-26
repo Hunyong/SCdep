@@ -149,13 +149,23 @@ ML.BvZINB3 <- function (xvec, yvec, initial = NULL, tol=1e-8, showFlag=FALSE) {
     delta <- expt[9] / (expt[2] + expt[4])                   # delta = E(V) / (E(xi0 + xi2))
     param[6] = expt[8]                                                    # pi = E(Z)
     
-    b1.opt <- function (bb) {(sum(expt[2:4]) /sum (igamma(-log(bb) + expt[5:7])) - bb)} #igamma: inverse-digamma
-    # b1.opt2 <- function (b1) {b1.opt(b1)^2}
-    # b1.gr <- function (b1) { (sum(expt[2:4]) *(sum(1/trigamma(log(b1) + expt[5:7])))) /((sum (igamma(log(b1) + expt[5:7])))^2 * b1 ) -1}
-    param[4]    <- multiroot(b1.opt, start = param[4])$root[1]            # b1
-    #multiroot(b1.opt, start = param[4])$root %>% print  # b1 #####
-    param[1:3]  <- igamma(-log(param[4]) + expt[5:7])                     # a1 ~ a3
+    opt.vec <- function(par.ab) {
+      par.ab <- exp(par.ab)
+      r1 <- sum(expt[2:4]) - sum(par.ab[1:3]) * par.ab[4]
+      r2 <- expt[5:7] - digamma(par.ab[1:3]) - log(par.ab[4])
+      # print(c(r1,r2)) ###
+      return(c(r1,r2))
+    }
+    param.l <- log(param)
+    result <- try(multiroot(opt.vec, start=param.l[1:4])$root, silent=TRUE)
+    if (class(result)=="try-error") {
+      initial = rep(1,5)
+      result <- multiroot(opt.vec, start=initial[1:4], rtol=1e-20)$root
+    }
+    param[1:4] <- exp(result)
     param[5]    <- param[4] * delta                                       # b2
+    param[6] = expt[8]
+    
   #print (expt) #####
     if (showFlag) {print(c(iter, round(param,5), expt[1] * n))} #lik: lik of previous iteration
     if (max(abs(param - param.old)) <= tol) {
@@ -191,6 +201,7 @@ if (FALSE) {
   
   tt(1)
   ML.BvZINB3(extractor(1), extractor(3),showFlag=TRUE)
+  ML.BvZINB3(extractor(1), extractor(3),initial=c(1.733055e-05, 0.009879464, 0.05864169, 69.22358, 134.6264,0),showFlag=TRUE)
   ML.BvNB3(extractor(1), extractor(3),showFlag=TRUE)
   lik.BvZINB3(extractor(1), extractor(3),c(1.733055e-05, 0.009879464, 0.05864169, 69.22358, 134.6264,0)) #1485.486
   tt(2) #8sec
@@ -202,6 +213,128 @@ if (FALSE) {
   #lik.BvNB3(extractor(1), extractor(38), c())
   
 }
+
+
+# EM with booster
+ML.BvZINB3.2 <- function (xvec, yvec, initial = NULL, tol=1e-8, showFlag=FALSE) {
+  xy.reduced <- as.data.frame(table(xvec,yvec))
+  names(xy.reduced) <- c("x", "y","freq")
+  xy.reduced <- xy.reduced[xy.reduced$freq != 0,]
+  xy.reduced$x <- as.numeric(as.character(xy.reduced$x))
+  xy.reduced$y <- as.numeric(as.character(xy.reduced$y))
+  xy.reduced$freq <- as.numeric(as.character(xy.reduced$freq))
+  n <- sum(xy.reduced$freq)
+  if (max(xvec)==0 & max(yvec)==0) {return(c(rep(1e-10,5),1))}
+  #print(xy.reduced)
+  
+  # initial guess
+  if (is.null(initial)) {
+    xbar <- mean(xvec); ybar <- mean(yvec); xybar <- mean(c(xbar, ybar))
+    s2.x <- var(xvec); s2.y <- var(yvec); if(is.na(s2.x)) {s2.x <- s2.y <- 1}
+    cor.xy <- cor(xvec,yvec); if (is.na(cor.xy)) {cor.xy <- 0}
+    zero <- sum(xvec == 0 & yvec == 0) / n
+    initial <- rep(NA,5)
+    initial[4] <- s2.x /xbar
+    initial[5] <- s2.y /ybar
+    initial[6] <- zero
+    initial[2:3] <- c(xbar,ybar)/initial[4:5]
+    initial[1] <- min(initial[2:3]) * abs(cor.xy)
+    initial[2:3] <-  initial[2:3] - initial[1]
+    initial <- pmax(initial, 1e-5)
+    print(initial) ###
+  }
+  
+  booster <- function (param.matrix, xvec, yvec, n.cand = 10) {
+    param.matrix[,6] <- qlogis(param.matrix[,6])  # logit transformation for probs
+    param.matrix[,1:5] <- log(param.matrix[,1:5])  # log transformation for positives
+    a <- param.matrix[1,]
+    b <- param.matrix[5,]
+    candidate <- matrix(b, byrow=TRUE, ncol=6, nrow = n.cand)
+    index <- which((abs(b-a) > 1e-5) & is.finite(b) & is.finite(a))  # target param for grid search
+    
+    for (s in 1:n.cand) {
+      candidate[s,index] <- b[index] + (b[index] - a[index]) * (s-1)
+    }
+    candidate[,6] <- plogis(candidate[,6])  # back-transformation
+    candidate[,1:5] <- exp(candidate[,1:5])  # back-transformation for probs
+    #print(candidate[,1:4])  #debug
+    
+    lik <- sapply(1:n.cand, function(s) {lik.BvZINB3(xvec, yvec, candidate[s,])})
+    return(cbind(candidate,lik))
+  }
+  
+  iter = 0
+  boost = 0
+  index = 1 # previous boosting index
+  param = initial
+  if (showFlag) {print(c("iter", "a0", "a1", "a2", "b1", "b2", "pi"))}
+  repeat {
+    iter = iter + 1
+    #print(c(param))
+    #print(lik(vec, pp=param[1], m0=param[2], m1=param[3], m2=param[4])) # debug
+    param.old <- param # saving old parameters
+    
+    # updating
+    expt <- dBvZINB3.Expt.vec(xy.reduced$x, xy.reduced$y, 
+                              a0 = param[1], a1 = param[2], a2 = param[3], b1 = param[4], b2 = param[5], pp = param[6])
+    expt <- as.vector(expt %*% xy.reduced$freq / n)
+    # loglik = expt[1] * n
+    delta <- expt[9] / (expt[2] + expt[4])                   # delta = E(V) / (E(xi0 + xi2))
+    param[6] = expt[8]                                                    # pi = E(Z)
+    
+    opt.vec <- function(par.ab) {
+      par.ab <- exp(par.ab)
+      r1 <- sum(expt[2:4]) - sum(par.ab[1:3]) * par.ab[4]
+      r2 <- expt[5:7] - digamma(par.ab[1:3]) - log(par.ab[4])
+      # print(c(r1,r2)) ###
+      return(c(r1,r2))
+    }
+    param.l <- log(param)
+    result <- try(multiroot(opt.vec, start=param.l[1:4])$root, silent=TRUE)
+    if (class(result)=="try-error") {
+      initial = rep(1,5)
+      result <- multiroot(opt.vec, start=initial[1:4], rtol=1e-20)$root
+    }
+    param[1:4] <- exp(result)
+    param[5]    <- param[4] * delta                                       # b2
+    param[6] = expt[8]
+    
+    
+    # boosting
+    # boosting
+    if (iter == 6 + boost*5) {  # Creating an empty matrix
+      param.boost <- matrix(NA, nrow = 5, ncol = 6)
+    }
+    if (iter >= 6 + boost*5 & iter <= 10 + boost*5 ) {  # Storing last ten params
+      param.boost[iter - (5 + boost*5),] <- param
+    }
+    if (iter == 10 + boost*5) {
+      param.boost <- booster(param.boost, xvec, yvec, n.cand = max(5, index * 2))
+      index <- which.max(param.boost[,7])
+      if (showFlag) {print(param.boost)}
+      if (showFlag) {print(paste0("Jump to the ",index, "th parameter"))}
+      param <- param.boost[index,1:6]
+      boost <- boost + 1
+    }
+    
+    
+    #print (expt) #####
+    if (showFlag) {print(c(iter, round(param,5), expt[1] * n))} #lik: lik of previous iteration
+    if (max(abs(param - param.old)) <= tol) {
+      names(param) <- c("a0", "a1", "a2", "b1", "b2", "pi")
+      return(param)
+      break
+    }
+  }
+  #result <- data.frame(a0 = param[1], a1 = param[2], a2 = param[3], b1 = param[4], b2 = param[5], pi = param[6])
+  #return(result)
+}
+ML.BvZINB3.2(extractor(11), extractor(16),showFlag=TRUE) #>-804.44 >10mins
+ML.BvZINB3.2(extractor(1), extractor(5),showFlag=TRUE)
+
+
+
+
 # some deviance tests
 if (FALSE) {
   tt(1)
