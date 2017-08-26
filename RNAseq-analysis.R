@@ -56,6 +56,54 @@ library("gridExtra") #grid.arrange
 
 
 ###################################################################################################
+### 2.0 nonzero proportion
+###################################################################################################
+nonzero <- lapply(1:length(iset.Mm.c2), function(y) apply(data[iset.Mm.c2[[y]],-1],1,function(x) 1 - mean(x==0)))
+for (i in 1:10) hist(log10(nonzero[[i]]), main=i)
+for (i in 1:10) hist(nonzero[[i]], main=i)
+
+## cut1
+non0.cut = c(0, 0.001, 0.01,0.05,0.1,.2,1)  #(-1,0] for exact 0
+nonzero.table <- t(sapply(nonzero, function(x) {
+  a <- table(cut(x, non0.cut, include.lowest = TRUE))
+  return(a/sum(a))}))
+
+round(nonzero.table,2)
+nonzero.heat1 <- heatmap(nonzero.table, NA, NA)
+
+## cut2
+nonzero.table2 <- nonzero.table
+nonzero.table2[,2] <- nonzero.table2[,1]+ nonzero.table2[,2]
+nonzero.table2[,2] <- nonzero.table2[,1]+ nonzero.table2[,2]
+nnozero.table2 <- nonzero.table2[,-1]
+names(nonzero.table2)[1] <- "[0,0.01]"
+nonzero.heat2 <- heatmap(nonzero.table2, NA, NA)
+
+## cut3
+non0.cut3 = c(0, 0.001, 0.01, 0.025, 0.05,0.1,.2,1)  #(-1,0] for exact 0
+nonzero.table3 <- t(sapply(nonzero, function(x) {
+  a <- table(cut(x, non0.cut3, include.lowest = TRUE))
+  return(a/sum(a))}))
+
+round(nonzero.table3,2)
+apply(nonzero.table3, 2, mean)
+png("plot1-1-1.png")
+heatmap(nonzero.table3, NA, NA)
+dev.off()
+
+# based on cut3, split group into [0,0.01), [0.01,0.05), [0.05, 1]
+non0.cut4 = c(0,  0.01, 0.05,1)
+nonzero.table4 <- t(sapply(nonzero, function(x) {
+  a <- table(cut(x, non0.cut4, include.lowest = TRUE))
+  return(a/sum(a))}))
+round(nonzero.table4, 2)
+apply(nonzero.table4, 2, mean)
+png("plot1-1-2.png")
+heatmap(nonzero.table4, NA, NA)
+dev.off()
+
+
+###################################################################################################
 ### 2.1 MI & cor - computing associations
 ###################################################################################################
 
@@ -722,6 +770,40 @@ png("plot2-7-1-4.png", height=400, width=480)
 grid.arrange( plot2.7.1.4A, plot2.7.1.4D, nrow=2)
 dev.off()
 
+
+#### Geneset 2
+MLE.Geneset2 <- list()
+tt(1)
+MLE.Geneset2$BZIP <- pairwise.MLE(data[iset.Mm.c2[[2]],], ML.fun = ML.BZIP)  ## 32min
+tt(2)
+tt(1)
+MLE.Geneset2$BZIP.B <- pairwise.MLE(data[iset.Mm.c2[[2]],], ML.fun = ML.BZIP.B2)  ## 9 mins
+tt(2)
+tt(1)
+tmp.2 <- MLE.Geneset2$BZIP[complete.cases(MLE.Geneset2$BZIP),]
+b <- entropy.BZIP.vec(pp = tmp.2$pp, m0 = tmp.2$mu0, m1 = tmp.2$mu1, m2 = tmp.2$mu2) #21mins
+tt(2)
+tmp.3 <- data.frame(matrix(,nrow=dim(MLE.Geneset2$BZIP)[1],4))
+names(tmp.3) <- c("H1", "H2", "H12", "MI")
+tmp.3[complete.cases(MLE.Geneset2$BZIP),] <- matrix(as.numeric(t(b)),ncol=4)
+b2 <- cbind(MLE.Geneset2$BZIP,tmp.3)
+MLE.Geneset2$BZIP <- b2; #rm(b, b2)
+MLE.Geneset2$BZIP$cor <- Mm.c2.micor.tmp[[2]]$cor
+
+tt(1)
+tmp.2 <- MLE.Geneset2$BZIP.B[complete.cases(MLE.Geneset2$BZIP.B),]
+b <- entropy.BZIP.B.vec(p1 = tmp.2$p1, p2 = tmp.2$p2, p3 = tmp.2$p3, p4 = tmp.2$p4, 
+                        m0 = tmp.2$mu0, m1 = tmp.2$mu1, m2 = tmp.2$mu2) #10mins
+tt(2)
+tmp.3 <- data.frame(matrix(,nrow=dim(MLE.Geneset2$BZIP.B)[1],4))
+names(tmp.3) <- c("H1", "H2", "H12", "MI")
+tmp.3[complete.cases(MLE.Geneset2$BZIP.B),] <- matrix(as.numeric(t(b)),ncol=4)
+b2 <- cbind(MLE.Geneset2$BZIP.B,tmp.3)
+MLE.Geneset2$BZIP.B <- b2; #rm(b, b2)
+MLE.Geneset2$BZIP.B$cor <- Mm.c2.micor.tmp[[2]]$cor
+
+
+
 ##############################################################################################
 ### 2.7.2 Parametric approach of measuring MI - BvZIP
 ##############################################################################################
@@ -854,4 +936,17 @@ plot2.7.3.1 <-  ggplot(transform(MLE.Geneset1$BZIP.B, nonzero = cut(non0.min, no
   geom_point(aes(color=1-non0.min)) + ggtitle(paste0("PMI(BZIP(B)) vs PMI(BZIP) by zero counts - Geneset 1")) +
   xlab("PMI by BZIP model") + ylab("PMI by BZIP(B) model")
 png2(plot2.7.3.1, width = 720, height = 360)
+plot2.7.3.2 <-  ggplot(transform(MLE.Geneset1$BZIP.B, nonzero = cut(non0.min, non0.cut)), aes(as.numeric(MLE.Geneset1$BP$MI), MI, label=pair)) +
+  geom_point(aes(color=1-non0.min)) + ggtitle(paste0("PMI(BZIP(B)) vs PMI(BP) by zero counts - Geneset 1")) +
+  xlab("PMI by BP model") + ylab("PMI by BZIP(B) model")
+png2(plot2.7.3.2, width = 720, height = 360)
+plot2.7.3.3 <-  ggplot(transform(MLE.Geneset1$BZIP.B, nonzero = cut(non0.min, non0.cut)), aes(as.numeric(Mm.c2.micor.tmp[[1]]$MI), MI, label=pair)) +
+  geom_point(aes(color=1-non0.min)) + ggtitle(paste0("PMI(BZIP(B)) vs EMI by zero counts - Geneset 1")) +
+  xlab("EMI") + ylab("PMI by BZIP(B) model")
+png2(plot2.7.3.3, width = 720, height = 360)
 
+MLE.Geneset1$BZIP.B[MLE.Geneset1$BZIP.B$MI>.05,]
+cbind(MLE.Geneset1$BZIP.B[MLE.Geneset1$BZIP.B$MI>.05,c("pair","MI")],Mm.c2.micor.tmp[[1]][MLE.Geneset1$BZIP.B$MI>.05,"MI"])
+table(extractor(3),extractor(11))
+
+dev.BZIP.B 

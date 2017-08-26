@@ -32,7 +32,7 @@ lik.BvZINB2 <- function(x, y, param) {
 
 
 ### 2.EM
-
+### nonzero cells: (1-pp) was not multiplied by!!! this caused decreasing likelihood in EM
 dBvZINB2.Expt <- function(x, y, a0, a1, a2, b, pp) {
   p1 = (2 * b + 1) /(b + 1)
   f00 = (b + 1)^-(a1 + a2) * (2* b + 1)^-a0
@@ -62,7 +62,7 @@ dBvZINB2.Expt <- function(x, y, a0, a1, a2, b, pp) {
     l1 <- function(k, m) exp(lgamma(a1 + k) - lgamma(k+1) - lgamma(a1) + lgamma(x + y + a0 -m -k) - lgamma(x -k +1) - lgamma(a0 + y - m) + k *log(p1)
                              + lgamma(m + a2) - lgamma(m+1) - lgamma(a2) + lgamma(y +a0 -m) - lgamma(y -m +1) - lgamma(a0) + m *log(p1))
     l2 <- - (+x+y+a0)*log(1 + 2* b) + (x +y) * log(b) - (a1 + a2) * log(1 + b)
-    l2 <- exp(l2)
+    l2 <- exp(l2) * (1-pp)
     
     l1.mat <- sapply(0:x, function(k) sapply(0:y, l1, k=k))
     l1.mat <- (l1.mat * l2) #%>%print
@@ -139,7 +139,7 @@ if (FALSE) {
   dBvZINB2.Expt(10, 1, 1,2,1,2,0)
   dBvZINB2.Expt(1, 10, 1,1,2,2,0)
 }
-#EM1 not converging
+#EM1
 ML.BvZINB2 <- function (xvec, yvec, initial = NULL, tol=1e-8, showFlag=FALSE) {
   xy.reduced <- as.data.frame(table(xvec,yvec))
   names(xy.reduced) <- c("x", "y","freq")
@@ -206,7 +206,7 @@ ML.BvZINB2 <- function (xvec, yvec, initial = NULL, tol=1e-8, showFlag=FALSE) {
       result <- try(multiroot(opt.vec, start=param.l[1:4], rtol=1e-20)$root, silent=TRUE)
       if (class(result)=="try-error") {
         initial = rep(1,5)
-        result <- multiroot(opt.vec, start=param[1:4], rtol=1e-20)$root
+        result <- multiroot(opt.vec, start=initial[1:4], rtol=1e-20)$root
       }
       param[1:4] <- exp(result)
       param[5] = expt[8]
@@ -224,7 +224,7 @@ ML.BvZINB2 <- function (xvec, yvec, initial = NULL, tol=1e-8, showFlag=FALSE) {
   #return(result)
 }
 
-#EM2 not converging: something must be wrong with the expectation step!!!
+#EM2 root solved by quasi-NR: much slower: maybe one-step quasi-NR can be used
 ML.BvZINB2.EM2 <- function (xvec, yvec, initial = NULL, tol=1e-8, showFlag=FALSE) {
   xy.reduced <- as.data.frame(table(xvec,yvec))
   names(xy.reduced) <- c("x", "y","freq")
@@ -307,7 +307,7 @@ ML.BvZINB2.EM2 <- function (xvec, yvec, initial = NULL, tol=1e-8, showFlag=FALSE
 ML.BvZINB2(extractor(3), extractor(54), showFlag=TRUE)
 ML.BvZINB2(extractor(8), extractor(58), showFlag=TRUE) #very slow:
 # 373.00000     0.01645     0.16632     0.07736    49.25460     0.44795 -1899.10708
-
+lik.BvZINB2(extractor(8), extractor(58),c(0.01645,     0.16632,     0.07736    ,49.25460     ,0.44795))
 
 
 # direct maximization does not work!  !!! 
@@ -778,13 +778,13 @@ tt(1); ML.BvZINB2.hybrid2(extractor(2), extractor(12), showFlag=TRUE); tt(2) # 1
 tt(1); ML.BvZINB2.hybrid3(extractor(2), extractor(12), showFlag=TRUE); tt(2) # 1.6min lik: -49.35
 
 # initial guess of pi = n0/n
-tt(1); ML.BvZINB2.direct(extractor(1), extractor(8), showFlag=TRUE); tt(2) # 1.3min lik: -1520
+tt(1); ML.BvZINB2.direct(extractor(1), extractor(8), showFlag=TRUE); tt(2)  # 1.3min lik: -1520
 tt(1); ML.BvZINB2.direct2(extractor(1), extractor(8), showFlag=TRUE); tt(2) # 9sec lik: -1609
 tt(1); ML.BvZINB2.direct3(extractor(1), extractor(8), showFlag=TRUE); tt(2) # 17sec lik: -1582
-tt(1); ML.BvZINB2.hybrid(extractor(1), extractor(8), showFlag=TRUE); tt(2)  #>1min lik: > -
+tt(1); ML.BvZINB2.hybrid(extractor(1), extractor(8), showFlag=TRUE); tt(2)  # 48sec lik: -1528
 tt(1); ML.BvZINB2.hybrid2(extractor(1), extractor(8), showFlag=TRUE); tt(2) # 3.5min lik: -1523
 tt(1); ML.BvZINB2.hybrid3(extractor(1), extractor(8), showFlag=TRUE); tt(2) # >20min lik: -1520
-
+tt(1); ML.BvZINB2(extractor(1), extractor(8), showFlag=TRUE); tt(2) #  >2min  lik: -1520
 tt(1); ML.BvZINB2.EM2(extractor(1), extractor(8), showFlag=TRUE); tt(2) # >20min lik: -1520
 
 

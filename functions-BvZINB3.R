@@ -21,6 +21,7 @@ lik.BvZINB3 <- function(x, y, param) {
 
 ### 2.EM
 
+### nonzero cells: (1-pp) was not multiplied by!!! this caused decreasing likelihood in EM
 dBvZINB3.Expt <- function(x, y, a0, a1, a2, b1, b2, pp) {
   p1 = (b1 + b2 + 1) /(b1 + 1); p2 = (b1 + b2 + 1) /(b2 + 1)
   f00 = (b1 + 1)^-a1 * (b2 + 1)^-a2 * (b1 + b2 + 1)^-a0
@@ -50,7 +51,7 @@ dBvZINB3.Expt <- function(x, y, a0, a1, a2, b1, b2, pp) {
     l1 <- function(k, m) exp(lgamma(a1 + k) - lgamma(k+1) - lgamma(a1) + lgamma(x + y + a0 -m -k) - lgamma(x -k +1) - lgamma(a0 + y - m) + k *log(p1)
                              + lgamma(m + a2) - lgamma(m+1) - lgamma(a2) + lgamma(y +a0 -m) - lgamma(y -m +1) - lgamma(a0) + m *log(p2))
     l2 <- - (+x+y+a0)*log(1 + b1 + b2) + x * log(b1) + y * log(b2) - a1 * log(1 + b1) - a2 * log(1 + b2)
-    l2 <- exp(l2)
+    l2 <- exp(l2) *(1-pp)
     
     l1.mat <- sapply(0:x, function(k) sapply(0:y, l1, k=k))
     l1.mat <- (l1.mat * l2) #%>%print
@@ -128,7 +129,7 @@ ML.BvZINB3 <- function (xvec, yvec, initial = NULL, tol=1e-8, showFlag=FALSE) {
     initial[1] <- min(initial[2:3]) * abs(cor.xy)
     initial[2:3] <-  initial[2:3] - initial[1]
     initial <- pmax(initial, 1e-5)
-    #print(initial) ###
+  print(initial) ###
   }
   
   iter = 0
@@ -168,19 +169,11 @@ ML.BvZINB3 <- function (xvec, yvec, initial = NULL, tol=1e-8, showFlag=FALSE) {
 }
 # simple tests
 if (FALSE) {
-  ML.BvZINB3(c(10,1,1),c(10,1,2), showFlag=TRUE) # c(1.274400, 0.002953337, 0.250098153, 2.951314982, 2.840646551, 0)
+  ML.BvZINB3(c(10,1,1),c(10,1,2), showFlag=TRUE) # c(1.193014333 0.002745514 0.003336045 3.341621165 3.618839217 0.000000000 )
   ML.BvNB3(c(10,1,1),c(10,1,2), showFlag=TRUE)   # c(1.189742, 0.0001505849, 0.000292592, 3.361761, 3.641081,0)
-  apply(dBvZINB3.Expt.vec(c(10,1,1),c(10,1,2), 1.189742, 0.0001505849, 0.000292592, 3.361761, 3.641081,0),1, mean)
-  [1] -4.301469e+00  4.000034e+00  3.047785e-04  6.091879e-04  9.103122e-01 -6.640556e+03 -9.798375e+00
-  [8]  0.000000e+00  4.333333e+00
   
   ML.BvZINB3(c(0,1,1),c(0,1,5), showFlag=TRUE)
-  lik.BvZINB3(c(0,1,1),c(0,1,2), c(3.003010e-01,  2.348166e-03,  1.514485e-01,  1.895357e+00,  2.210670e+00, 4.940656e-324) )
-  lik.BvZINB3(c(0,1,1),c(0,1,2), c(3.003010e-01,  2.348166e-03,  1.514485e-01,  1.895357e+00,  2.210670e+00, .01) )
-  lik.BvZINB3(c(10,1,1),c(10,1,2), c(1.274399892, 0.002953337, 0.250098153, 2.951314982 ,2.840646551, 0.000000000 ) )
-  lik.BvZINB3(c(10,1,1),c(10,1,2), c(1.18971, 0.0001450095 ,0.0004408919 ,3.501135,3.501135,0 ) )
-  lik.BvZINB3(c(10,1,1),c(10,1,2), c(1.193014333, 0.002745514, 0.003336045, 3.341621165, 3.618839217, 0.000000000) )
-  ML.BvNB3(c(10,1,1),c(10,1,2))
+  ML.BvNB3(c(0,1,1),c(0,1,5))
   tt(1)
   ML.BvNB3(extractor(1), extractor(4), showFlag=TRUE)  #0.0004349035 0.009488825 0.003788559 68.25597 9.835188
   ML.BvZINB3(extractor(1), extractor(4), initial = c(0.00080,    0.01505 ,   0.00621   ,67.41456   , 9.17832  ,  0.36109), showFlag=TRUE)
@@ -191,27 +184,15 @@ if (FALSE) {
   lik.BvNB3(extractor(1), extractor(4),c(0.0004349035, 0.009488825, 0.003788559, 68.25597, 9.835188)) # -308.7
   
   
+  3.404230e-05 9.740676e-03 5.435834e-03 7.059027e+01 6.627206e+00 9.500000e-01
   
-  
-  
-  
-  {-3.356625e-01  5.371056e-02  1.736143e+00  6.363566e-01 -2.219790e+03 -9.442568e+01 -2.561689e+02
-  [8]  8.643841e-01  1.053820e-01
-  -3.356618e-01  7.034855e-02  2.092216e+00  7.615860e-01 -2.137599e+03 -9.131154e+01 -2.542944e+02
-  [8]  8.284366e-01  1.279334e-01
-  apply(dBvZINB3.Expt.vec(extractor(1), extractor(4), 0.0004349035, 0.009488825, 0.003788559, 68.25597, 9.835188, .95), 1, mean)
-  igamma(-log(68.25597) + 3.227275e-02)
-  digamma(0.0004349035)+ log(68.25597)}
   
   tt(2) # 31secs
   
-  ML.BvNB3(extractor(2), extractor(5), method="BFGS", abstol=1e-30)
-  ML.BvNB3(extractor(2), extractor(5), method="Nelder-Mead", abstol=1e-30)
-  sum(sapply(dBvNB3.gr.vec(extractor(2), extractor(5), 0.0004670043, 0.002597285, 0.01597736, 10.48014, 35.76876)[1,],cbind))
-  sum(sapply(dBvNB3.gr.vec(extractor(2), extractor(5), 0.0004686926, 0.002604057, 0.01598007, 10.45238, 35.75869)[1,],cbind))
-  
   tt(1)
-  ML.BvNB3(extractor(1), extractor(3), method="BFGS")
+  ML.BvZINB3(extractor(1), extractor(3),showFlag=TRUE)
+  ML.BvNB3(extractor(1), extractor(3),showFlag=TRUE)
+  lik.BvZINB3(extractor(1), extractor(3),c(1.733055e-05, 0.009879464, 0.05864169, 69.22358, 134.6264,0)) #1485.486
   tt(2) #8sec
   tt(1)
   ML.BvNB3(extractor(1), extractor(38), method="BFGS", showFlag=TRUE)

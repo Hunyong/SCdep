@@ -132,6 +132,7 @@ png2(plot2.8.2B.2)
 
 xvec <- extractor(1); yvec <- extractor(2)
 table(xvec,yvec)
+1-bin.profile(xvec,yvec)[4]/800  #Nonzero pairs = 0.0475
 dev.BZIP.B(xvec, yvec)#dev = 841    vs 861 (reference chi2(800-6, 95%))
 dev.BZIP(xvec, yvec)  #dev = 1040   vs 863 (reference chi2(800-4, 95%))
 dev.BZIP(xvec, yvec, c(0.9525, 7.699164e-09, 14.52631, 0.6842103))
@@ -140,29 +141,127 @@ qchisq(.95,796) #863
 qchisq(.95,797) #864
 
 xvec <- extractor(3); yvec <- extractor(4)   # This has some problem with large number (338,4) that makes the likelihood -Inf screws everything
+1-bin.profile(xvec,yvec)[4]/800  #Nonzero pairs = 0.26
 dev.BZIP(xvec, yvec)  #dev = 1,694  vs 863 (reference chi2(800-4, 95%))
 dev.BP(xvec, yvec)    #dev = 17,815 vs 864
 dev.BZIP.B(xvec, yvec) 
 
 xvec <- extractor(5); yvec <- extractor(6)
+1-bin.profile(xvec,yvec)[4]/800  #Nonzero = 0.0775
 dev.BZIP.B(xvec, yvec)#dev = 1386   vs 861 (reference chi2(800-6, 95%))
 dev.BZIP(xvec, yvec)  #dev = 2030   vs 863 (reference chi2(800-4, 95%))
 dev.BP(xvec, yvec)    #dev = 5074   vs 864
 
 xvec <- extractor(8); yvec <- extractor(11)
+1-bin.profile(xvec,yvec)[4]/800  #Nonzero = 0.3588
 dev.BZIP.B(xvec, yvec)#dev = 4279   vs 861 (reference chi2(800-6, 95%))
 dev.BZIP(xvec, yvec)  #dev = 7088   vs 863 (reference chi2(800-4, 95%))
 dev.BP(xvec, yvec)    #dev = 18925   vs 864
 
 xvec <- extractor(30); yvec <- extractor(50)
+1-bin.profile(xvec,yvec)[4]/800  #Nonzero = 0.02
 dev.BZIP.B(xvec, yvec)#dev = 239   vs 861 (reference chi2(800-6, 95%))
 dev.BZIP(xvec, yvec)  #dev = 250   vs 863 (reference chi2(800-4, 95%))
 dev.BP(xvec, yvec)    #dev = 486   vs 864
 
 
-# BZIP is sig'ly better than BP
-# BZIP is not sig'ly better than saturated model
-# Try BvZINB!!
+# calculating deviance for whole geneset 1 (BvZIP(B) model)
+MLE.Geneset1$BZIP.B
+a <- cbind(1,2,dev.BZIP.B(extractor(1), extractor(2), param = c(1,1,1,1,1,1,1)))
+for (i in 1:dim(MLE.Geneset1$BZIP.B)[1]) {
+  tmp <- MLE.Geneset1$BZIP.B[i,]
+  a1 <- tmp[1]; a2 <- tmp[2]
+  a3 <- tmp[4:10] #params
+  a[i,] <- c(a1,a2,dev.BZIP.B(extractor(as.numeric(a1)), extractor(as.numeric(a2)), param = a3))
+  print(a[i,])
+}
+
+MLE.Geneset1$BZIP.B$dev <- a$deviance
+plot2.7.3.4B <-  ggplot(MLE.Geneset1$BZIP.B, aes(non0.min, dev)) +
+  geom_point(aes(color=1-non0.min)) + ggtitle(paste0("deviance of BvZIP(B) model - Geneset 1")) +
+  ylim(c(0,25000)) +
+  xlab("nonzero-count proprotion(min)") + ylab("Deviance of BvZIP(B)") + geom_abline(intercept=861, slope=0, linetype, color="red", size=0.1)
+png2(plot2.7.3.4B, width = 720, height = 360)
+
+dim(MLE.Geneset1$BZIP.B)  #1653 pairs
+sum (MLE.Geneset1$BZIP.B$dev<=861,na.rm=TRUE)  # 580 pairs
+sum (MLE.Geneset1$BZIP.B$dev>=861,na.rm=TRUE)  # 1073 pairs
+sum (MLE.Geneset1$BZIP.B$dev==Inf,na.rm=TRUE)  # 288
+
+
+# calculating deviance for whole geneset 1 (BvZIP model)
+MLE.Geneset1$BZIP
+b <- cbind(1,2,dev.BZIP(extractor(1), extractor(2), param = c(1,1,1,1,1)))
+for (i in 1:dim(MLE.Geneset1$BZIP)[1]) {
+  tmp <- MLE.Geneset1$BZIP[i,]
+  a1 <- tmp[1]; a2 <- tmp[2]
+  a3 <- tmp[4:7] #params
+  b[i,] <- c(a1,a2,dev.BZIP(extractor(as.numeric(a1)), extractor(as.numeric(a2)), param = a3))
+  print(b[i,])
+}
+
+MLE.Geneset1$BZIP$dev <- b$deviance
+plot2.7.3.4 <-  ggplot(MLE.Geneset1$BZIP, aes(non0.min, dev)) +
+  geom_point(aes(color=1-non0.min)) + ggtitle(paste0("deviance of BvZIP model - Geneset 1")) +
+  ylim(c(0,25000)) +
+  xlab("nonzero-count proprotion(min)") + ylab("Deviance of BvZIP") + geom_abline(intercept=863, slope=0, linetype, color="red", size=0.1)
+png2(plot2.7.3.4, width = 720, height = 360)
+
+dim(MLE.Geneset1$BZIP)  #1653 pairs
+sum (MLE.Geneset1$BZIP$dev<=863,na.rm=TRUE)  # 566 pairs
+sum (MLE.Geneset1$BZIP$dev>=863,na.rm=TRUE)  # 1087 pairs
+sum (MLE.Geneset1$BZIP$dev==Inf,na.rm=TRUE)  # 105
+plot(MLE.Geneset1$BZIP$dev, MLE.Geneset1$BZIP.B$dev)
+
+
+
+# calculating deviance for whole geneset 2 (BvZIP model)
+MLE.Geneset2$BZIP
+b <- cbind(1,2,dev.BZIP(extractor(1,2), extractor(2,2), param = c(1,1,1,1,1)))
+for (i in 1:dim(MLE.Geneset2$BZIP)[1]) {
+  tmp <- MLE.Geneset2$BZIP[i,]
+  a1 <- tmp[1]; a2 <- tmp[2]
+  a3 <- tmp[4:7] #params
+  b[i,] <- c(a1,a2,dev.BZIP(extractor(as.numeric(a1),2), extractor(as.numeric(a2),2), param = a3))
+  print(b[i,])
+}
+
+MLE.Geneset2$BZIP$dev <- b$deviance
+plot2.7.3.4C <-  ggplot(MLE.Geneset2$BZIP, aes(non0.min, dev)) +
+  geom_point(aes(color=1-non0.min)) + ggtitle(paste0("deviance of BvZIP model - Geneset 2")) +
+  ylim(c(0,25000)) +
+  xlab("nonzero-count proprotion(min)") + ylab("Deviance of BvZIP") + geom_abline(intercept=863, slope=0, linetype, color="red", size=0.1)
+png2(plot2.7.3.4C, width = 720, height = 360)
+
+
+
+# calculating deviance for whole geneset 2 (BvZIP(B) model)
+#####   MLE.Geneset1$BZIP.B
+a <- cbind(1,2,dev.BZIP.B(extractor(1), extractor(2), param = c(1,1,1,1,1,1,1)))
+for (i in 1:dim(MLE.Geneset2$BZIP.B)[1]) {
+    if (i ==300 | i == 349 ) {a[i,] <- c(a1, a2, NA,NA,NA)}
+    if (i >= 350) {
+    tmp <- MLE.Geneset2$BZIP.B[i,]
+    a1 <- tmp[1]; a2 <- tmp[2]
+    a3 <- tmp[4:10] #params
+    a[i,] <- c(a1,a2,dev.BZIP.B(extractor(as.numeric(a1),2), extractor(as.numeric(a2),2), param = a3))
+    print(a[i,])  
+  }
+}
+
+MLE.Geneset2$BZIP.B$dev <- a$deviance
+plot2.7.3.4D <-  ggplot(MLE.Geneset2$BZIP.B, aes(non0.min, dev)) +
+  geom_point(aes(color=1-non0.min)) + ggtitle(paste0("deviance of BvZIP(B) model - Geneset 2")) +
+  ylim(c(0,25000)) +
+  xlab("nonzero-count proprotion(min)") + ylab("Deviance of BvZIP(B)") + geom_abline(intercept=861, slope=0, linetype, color="red", size=0.1)
+png2(plot2.7.3.4B, width = 720, height = 360)
+
+dim(MLE.Geneset2$BZIP.B)  #1653 pairs
+sum (MLE.Geneset2$BZIP.B$dev<=861,na.rm=TRUE)  # 580 pairs
+sum (MLE.Geneset2$BZIP.B$dev>=861,na.rm=TRUE)  # 1073 pairs
+sum (MLE.Geneset2$BZIP.B$dev==Inf,na.rm=TRUE)  # 288
+
+
 
 
 # BZIP simulated data example
