@@ -106,7 +106,7 @@ dBP <- function(x, y = NULL, m0, m1, m2, log = FALSE, max = 500) {
   fun.a <- function(x, y, s, p, adj) {
     ifelse (p == 0, ifelse(s==0, 1, 0), exp(lchoose(x,s)+lchoose(y,s)+lfactorial(s)+ s*log(p) - adj)) 
   }
-  if (max(x,y) > 100) {adj = 500} else {adj = 0}  # Handle numerical error for large numbers
+  if (max(x,y) > 100) {adj = 300} else {adj = 0}  # Handle numerical error for large numbers
   if (max(x,y) > max) {result <- ifelse(log, -Inf, 0)} else {
     f3 <- log(sum(sapply(0:m, function(s) fun.a(x=x, y=y, s=s, p=p, adj=adj)))) + adj
     result <- f1 + f2 - m0 + f3
