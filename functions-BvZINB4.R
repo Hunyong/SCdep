@@ -27,7 +27,6 @@ lik.BvZINB4 <- function(x, y, param) {
 dBvZINB4.Expt <- function(x, y, a0, a1, a2, b1, b2, p1, p2, p3, p4) {
   # Base density
     t1 = (b1 + b2 + 1) /(b1 + 1); t2 = (b1 + b2 + 1) /(b2 + 1)
-    adj = 0
     l1 <- function(k, m) exp(lgamma(a1 + k) - lgamma(k+1) - lgamma(a1) + lgamma(x + y + a0 -m -k) - lgamma(x -k +1) - lgamma(a0 + y - m) + k *log(t1)
                              + lgamma(m + a2) - lgamma(m+1) - lgamma(a2) + lgamma(y +a0 -m) - lgamma(y -m +1) - lgamma(a0) + m *log(t2))
     l1.B <- - (+x+y+a0)*log(1 + b1 + b2) + x * log(b1) + y * log(b2) - a1 * log(1 + b1) - a2 * log(1 + b2)
@@ -37,11 +36,7 @@ dBvZINB4.Expt <- function(x, y, a0, a1, a2, b1, b2, p1, p2, p3, p4) {
     l4.B <- p4 * ifelse(x + y == 0, 1, 0)
     
     l.mat <- sapply(0:x, function(k) sapply(0:y, l1, k=k))  # %>% print
-    
-    
-### should be reviewed!!!!!!
-    if (is.infinite(l.mat)) {adj = 200; l.mat <- sapply(0:x, function(k) sapply(0:y, functions(m) l1(m = m, k =k) *10^-adj)) #%>%print
-    l.sum <- sum(l.mat * (l1.B + l2.B +  l3.B +  l4.B))*10^adj     # %>% print
+    l.sum <- sum(l.mat * (l1.B + l2.B +  l3.B +  l4.B))     # %>% print
 
   # expectation components
     R0.E1 <- function(k, m) {x - k + y - m + a0}
