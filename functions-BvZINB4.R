@@ -27,6 +27,7 @@ lik.BvZINB4 <- function(x, y, param) {
 dBvZINB4.Expt <- function(x, y, a0, a1, a2, b1, b2, p1, p2, p3, p4) {
   # Base density
     t1 = (b1 + b2 + 1) /(b1 + 1); t2 = (b1 + b2 + 1) /(b2 + 1)
+    adj = 0
     l1 <- function(k, m) exp(lgamma(a1 + k) - lgamma(k+1) - lgamma(a1) + lgamma(x + y + a0 -m -k) - lgamma(x -k +1) - lgamma(a0 + y - m) + k *log(t1)
                              + lgamma(m + a2) - lgamma(m+1) - lgamma(a2) + lgamma(y +a0 -m) - lgamma(y -m +1) - lgamma(a0) + m *log(t2))
     l1.B <- - (+x+y+a0)*log(1 + b1 + b2) + x * log(b1) + y * log(b2) - a1 * log(1 + b1) - a2 * log(1 + b2)
@@ -35,9 +36,17 @@ dBvZINB4.Expt <- function(x, y, a0, a1, a2, b1, b2, p1, p2, p3, p4) {
     l3.B <- exp(- (y + a0 + a2)*log(1 + b2) + y * log(b2)) * p3 * ifelse(x==0, 1, 0)
     l4.B <- p4 * ifelse(x + y == 0, 1, 0)
     
-    l.mat <- sapply(0:x, function(k) sapply(0:y, l1, k=k))  # %>% print
+    l.mat <- sapply(0:x, function(k) sapply(0:y, l1, k=k))  %>% print
+    
+    
+    if (is.infinite(sum(l.mat))) {
+      adj = 200
+      l.mat <- sapply(0:x, function(k) sapply(0:y, function(m) {l1(k =k, m = m) *exp(-adj)}))
+      } #%>%print
+    print(l.mat)
     l.sum <- sum(l.mat * (l1.B + l2.B +  l3.B +  l4.B))     # %>% print
-
+    #adjustment is cancelled out for each Expectations, so can be ignored. But for the final likelihood it should be adjusted at the end.
+    
   # expectation components
     R0.E1 <- function(k, m) {x - k + y - m + a0}
     log.R0.E1 <- function(k, m) {digamma(x - k + y - m + a0)}
@@ -99,7 +108,7 @@ dBvZINB4.Expt <- function(x, y, a0, a1, a2, b1, b2, p1, p2, p3, p4) {
     
     v.E <- y * ifelse(y == 0, 0, 1) + (a0 + a2) * b2 * sum(E.E[3:4])
     
-    result <- c(log(l.sum), R0.E, R1.E, R2.E, log.R0.E, log.R1.E, log.R2.E, E.E, v.E)
+    result <- c(log(l.sum)+adj, R0.E, R1.E, R2.E, log.R0.E, log.R1.E, log.R2.E, E.E, v.E)
     names(result) <- c("logdensity", paste0("R", 0:2, ".E"), paste0("log.R", 0:2, ".E"), paste0("E",1:4,".E"), "v.E")
     return(result)
 }
