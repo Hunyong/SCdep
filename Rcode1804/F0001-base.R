@@ -145,3 +145,7 @@ screen.zero <- function(data, geneset, cut = .1, output="which", exclude.col = 1
   # output = either "which" or "stat"
   data[geneset,-1] %>% apply(1,function(x) mean(x!=0)) %>% nonzero(cut=cut) %>%"[["(output)
 }
+screened.length <- function(data, geneset, cut = .1, exclude.col = 1) {
+  screened.set = screen.zero(data = data, geneset = geneset, cut = cut, output="which", exclude.col = exclude.col)
+  return(length(screened.set))
+}

@@ -316,7 +316,7 @@ if (FALSE) {
 # EM with booster
 # maxiter control added, output =param + lik + #iter
 # Mar 15, 2018: Print pureCor instead of cor
-ML.BvZINB4.2 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter=200, showFlag=FALSE, showPlot=FALSE, cor.conv = FALSE) {
+ML.BvZINB4.2 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter=200, showFlag=FALSE, showPlot=FALSE, cor.conv = FALSE, boosting=TRUE) {
   xy.reduced <- as.data.frame(table(xvec,yvec))
   names(xy.reduced) <- c("x", "y","freq")
   xy.reduced <- xy.reduced[xy.reduced$freq != 0,]
@@ -427,30 +427,29 @@ ML.BvZINB4.2 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter=200, sho
     }
     
     # boosting
-    # boosting
-    if (iter == 6 + boost*5) {  # Creating an empty matrix
-      param.boost <- matrix(NA, nrow = 5, ncol = 9)
+    if (boosting) {
+      if (iter == 6 + boost*5) {  # Creating an empty matrix
+        param.boost <- matrix(NA, nrow = 5, ncol = 9)
+      }
+      if (iter >= 6 + boost*5 & iter <= 10 + boost*5 ) {  # Storing last ten params
+        param.boost[iter - (5 + boost*5),] <- param
+      }
+      if (iter == 10 + boost*5) {
+        param.boost <- booster(param.boost, xvec, yvec, n.cand = min(max(5, index * 2),20))
+        tmp.bbbb <<-param.boost
+        # print(dim(param.boost)); print(length(param.boost))
+        if (showFlag) {print(param.boost)}
+        
+        if (is.null (dim(param.boost))) {
+          param <- param.boost[1:9]
+        } else {
+          index <- which.max(param.boost[,10])
+          param <- param.boost[index,1:9]
+          if (showFlag) {print(paste0("Jump to the ",index, "th parameter"))}
+        } 
+        boost <- boost + 1
+      }
     }
-    if (iter >= 6 + boost*5 & iter <= 10 + boost*5 ) {  # Storing last ten params
-      param.boost[iter - (5 + boost*5),] <- param
-    }
-    if (iter == 10 + boost*5) {
-      param.boost <- booster(param.boost, xvec, yvec, n.cand = min(max(5, index * 2),20))
-tmp.bbbb <<-param.boost
-      # print(dim(param.boost)); print(length(param.boost))
-
-      if (showFlag) {print(param.boost)}
-      
-      if(is.null (dim(param.boost))) {
-        param <- param.boost[1:9]
-      } else {
-        index <- which.max(param.boost[,10])
-        param <- param.boost[index,1:9]
-        if (showFlag) {print(paste0("Jump to the ",index, "th parameter"))}
-      } 
-      boost <- boost + 1
-    }
-    
     
     #print (expt) #####
     if (showFlag) {print(c(iter, round(param,5), expt[1] * n, pureCor))} #lik: lik of previous iteration
