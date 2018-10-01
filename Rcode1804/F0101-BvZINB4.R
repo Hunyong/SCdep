@@ -1,4 +1,6 @@
 # BvZINB4: BvZINB3 + varying zero inflation parameters
+source("F0101-BvNB3.R")
+source("F0101-BvZINB4-supp.R")
 
 dBvZINB4 <- function(x, y, a0, a1, a2, b1, b2, p1, p2, p3, p4, log=FALSE) {
   dxy <- dBvNB3(x=x, y=y, a0=a0, a1=a1, a2=a2, b1=b1, b2=b2, log=FALSE)
@@ -45,30 +47,105 @@ rBvZINB4 <- function(n, a0, a1, a2, b1, b2, p1, p2, p3, p4, param=NULL) {
 ### 2.EM
 
 ### nonzero cells: (1-pp) was not multiplied by!!! this caused decreasing likelihood in EM
-dBvZINB4.Expt <- function(x, y, a0, a1, a2, b1, b2, p1, p2, p3, p4) {
+dBvZINB4.Expt <- function(x, y, a0, a1, a2, b1, b2, p1, p2, p3, p4, debug = FALSE) {
   # Base density
   t1 = (b1 + b2 + 1) /(b1 + 1); t2 = (b1 + b2 + 1) /(b2 + 1)
-  adj = 0
-  l1 <- function(k, m) exp(lgamma(a1 + k) - lgamma(k+1) - lgamma(a1) + lgamma(x + y + a0 -m -k) - lgamma(x -k +1) - lgamma(a0 + y - m) 
-                           + lgamma(m + a2) - lgamma(m+1) - lgamma(a2) + lgamma(y +a0 -m) - lgamma(y -m +1) - lgamma(a0))
-  l1.C <- function(k, m) exp(k *log(t1) + m *log(t2))
+  adj.A <- adj.B1 <- adj.C <- adj.sum <- 0
+  l1 <- function(k, m, adjj=0) exp(lgamma(a1 + k) - lgamma(k+1) - lgamma(a1) + lgamma(x + y + a0 -m -k) - lgamma(x -k +1) - lgamma(a0 + y - m) 
+                           + lgamma(m + a2) - lgamma(m+1) - lgamma(a2) + lgamma(y +a0 -m) - lgamma(y -m +1) - lgamma(a0) - adjj)
+  l1.C <- function(k, m, adjj=0) exp(k *log(t1) + m *log(t2) - adjj)
   l1.B <- - (+x+y+a0)*log(1 + b1 + b2) + x * log(b1) + y * log(b2) - a1 * log(1 + b1) - a2 * log(1 + b2)
+  # l1.B to be updated several lines later depending on l2.B ~ l4.B
+  l2.B <- exp(- (x + a0 + a1)*log(1 + b1) + x * log(b1) + adj.B1) * p2 * ifelse(y==0, 1, 0)
+  l3.B <- exp(- (y + a0 + a2)*log(1 + b2) + y * log(b2) + adj.B1) * p3 * ifelse(x==0, 1, 0)
+  l4.B <- p4 * ifelse(x + y == 0, 1, 0) * exp(adj.B1)
+  
+  # l1.AC For numerical stability use only.
+  l1.AC <- function(k, m, adjj=0) exp(lgamma(a1 + k) - lgamma(k+1) - lgamma(a1) + lgamma(x + y + a0 -m -k) - lgamma(x -k +1) - lgamma(a0 + y - m) 
+                                   + lgamma(m + a2) - lgamma(m+1) - lgamma(a2) + lgamma(y +a0 -m) - lgamma(y -m +1) - lgamma(a0) + k *log(t1) + m *log(t2) - adjj)
+  
+  
+  # cat("l1.B ", l1.B,"\n")  
+  if (l1.B < - 200 & log(l2.B + l3.B + l4.B) < 0) {
+if (debug) cat("adjustment activated for l1.B\n")     
+    adj.B1 = ((-l1.B - 200) %/% 100) * 100 # prevent exp(l1.B) from being 0
+    l1.B = l1.B + adj.B1
+  }
   l1.B <- exp(l1.B) * p1
-  l2.B <- exp(- (x + a0 + a1)*log(1 + b1) + x * log(b1)) * p2 * ifelse(y==0, 1, 0)
-  l3.B <- exp(- (y + a0 + a2)*log(1 + b2) + y * log(b2)) * p3 * ifelse(x==0, 1, 0)
-  l4.B <- p4 * ifelse(x + y == 0, 1, 0)
-
-  l.A.mat <- sapply(0:x, function(k) sapply(0:y, l1, k=k))  # %>% print
-  l.C.mat <- sapply(0:x, function(k) sapply(0:y, l1.C, k=k))  # %>% print
-  if (is.infinite(sum( l.A.mat))) {
-    adj = 200
-    l.A.mat <- sapply(0:x, function(k) sapply(0:y, function(m) {l1(k =k, m = m) *exp(-adj)}))
-  } #%>%print
+if (debug)  cat("l1.B ", l1.B,"\n")  
+  
+    
+  
+  l.A.mat <- sapply(0:x, function(k) sapply(0:y, l1, k = k, adjj = adj.A))  # %>% print
+  l.C.mat <- sapply(0:x, function(k) sapply(0:y, l1.C, k = k, adjj = adj.C))  # %>% print
+  while (log(sum( l.A.mat)) > 250) {
+if (debug)  cat("adjustment activated for A.mat\n")     
+    adj.A = adj.A + 200
+    l.A.mat <- sapply(0:x, function(k) sapply(0:y, l1, k = k, adjj = adj.A))  # %>% print
+  }
+  while (log(sum( l.C.mat)) > 250) {
+if (debug)  cat("adjustment activated for C.mat\n")     
+    adj.C = adj.C + 200
+    l.C.mat <- sapply(0:x, function(k) sapply(0:y, l1.C, k = k, adjj = adj.C))  # %>% print
+  }
+  
+# print(l.C.mat)
+  
+#   if (is.infinite(sum( l.A.mat))) {
+# cat("activated once")    
+#     adj.A = 200
+#     l.A.mat <- sapply(0:x, function(k) sapply(0:y, function(m) {l1(k =k, m = m) *exp(-adj.A)}))
+#     if (is.infinite(sum( l.A.mat))) { ## added for further adjustment
+# cat("activated twice")      
+#       adj.A = 500
+#       l.A.mat <- sapply(0:x, function(k) sapply(0:y, function(m) {l1(k =k, m = m) *exp(-adj.A)}))
+#     }  
+#   } #%>%print
   #adjustment is cancelled out for each Expectation, so can be ignored. But for the final likelihood it should be adjusted at the end.
   sum.AC <- sum(l.A.mat * l.C.mat)
+
+  if (is.infinite(sum.AC)| log(sum.AC) > 200) {
+    if (debug) cat("adjustment activated for AC.mat (too large)\n")
+    adj.A = adj.A + 100
+    adj.C = adj.C + 100
+    l.A.mat <- sapply(0:x, function(k) sapply(0:y, l1, k = k, adjj = adj.A))  # %>% print
+    l.C.mat <- sapply(0:x, function(k) sapply(0:y, l1.C, k = k, adjj = adj.C))  # %>% print
+    sum.AC <- sum(l.A.mat * l.C.mat)
+  } else if (log(sum.AC) < - 100) {
+    if (debug) cat("adjustment activated for AC.mat (too small)\n")
+    adj.A = adj.A - 200  # floor(log(sum(l.A.mat)/x/y)*2/3)
+    adj.C = adj.C - 200
+    l.A.mat <- sapply(0:x, function(k) sapply(0:y, l1, k = k, adjj = adj.A))  # %>% print
+    l.C.mat <- sapply(0:x, function(k) sapply(0:y, l1.C, k = k, adjj = adj.C))  # %>% print
+    l.AC.mat <- sapply(0:x, function(k) sapply(0:y, l1.AC, k = k, adjj = adj.C + adj.A))
+    sum.AC <- sum(l.AC.mat)
+    # abcde.1 <<- l.A.mat
+    # abcde.2 <<- l.C.mat
+    # abcde.3 <<- l.AC.mat
+  }
   sum.A <- sum(l.A.mat)
-  l.sum <- sum.AC * l1.B + sum.A * sum (l2.B +  l3.B +  l4.B)
-# print(c(l.sum, log(l.sum))); print(l.A.mat); print(l.C.mat); print(c(l1.B, l2.B, l3.B, l4.B, adj)) #####
+  l.sum <- sum.AC * l1.B + sum.A * sum (l2.B +  l3.B +  l4.B) * exp(-adj.C)
+  if (l.sum == 0) {
+    adj.sum = -floor(log(sum.AC)*2/3 + log(l1.B)*2/3)
+    if (debug) cat("adjustment activated for l.sum (adj = ", adj.sum, ")\n")
+    l.sum <- sum.AC * exp(adj.sum) * l1.B + sum.A * (exp(adj.sum) * sum (l2.B +  l3.B +  l4.B)) * exp(-adj.C)
+    # abcde.4 <<- c(l.sum = l.sum, sum.AC = sum.AC, l1.B = l1.B, sum.A = sum.A,  l2.B = l2.B, l3.B = l3.B, l4.B = l4.B, adj.C = adj.C)
+    ## paranthesis matters. sum.A = some number, exp(adj.sum) = almost inf, sum(l2.B +  l3.B +  l4.B) = 0, ...
+    # Then without paranthesis, Inf * 0 = NaN,
+    # But with paranthesis, c * (large number * 0) = c * 0 = 0
+  }
+
+if (debug) {
+  cat("sum.AC", sum.AC,"\n\n")
+  cat("sum.A", sum.A,"\n\n")
+  cat("sum(l.C.mat)", sum(l.C.mat),"\n\n")
+  cat("l1.B", l1.B,"\n\n")
+  cat("l2.B", l2.B,"\n\n")
+  cat("l3.B", l3.B,"\n\n")
+  cat("l4.B", l4.B,"\n\n")
+  cat("l.sum ", l.sum, "\n")
+}
+  # print(c(l.sum, log(l.sum))); print(l.A.mat); print(l.C.mat); print(c(l1.B, l2.B, l3.B, l4.B, adj.A)) #####
   # expectation components
   R0.E1 <- function(k, m) {x - k + y - m + a0}
   log.R0.E1 <- function(k, m) {digamma(x - k + y - m + a0)}
@@ -93,60 +170,67 @@ dBvZINB4.Expt <- function(x, y, a0, a1, a2, b1, b2, p1, p2, p3, p4) {
   
   R0.mat <- sapply (0:x, function(k) sapply(0:y, R0.E1, k=k))
   R0.mat <- R0.mat * l.A.mat
-  R0.E <- sum(R0.mat * l.C.mat * l1.B * R0.E1.B)/l.sum + 
+  R0.E <- sum(R0.mat * l.C.mat * exp(adj.sum) * l1.B * R0.E1.B)  / l.sum + 
           sum(R0.mat*(  l2.B * R0.E2.B
                       + l3.B * R0.E3.B
-                      + l4.B * R0.E4.B))/l.sum
+                      + l4.B * R0.E4.B)*exp(-adj.C + adj.sum)) / l.sum
   
+  # cat("R0.E ", R0.E, "\n")  
   R1.mat <- t(matrix(sapply(0:x, R1.E1), x+1, y+1))
   R1.mat <- R1.mat * l.A.mat
-  R1.E <- sum(R1.mat * l.C.mat * l1.B * R1.E1.B)/l.sum +  
+  R1.E <- sum(R1.mat * l.C.mat * exp(adj.sum) * l1.B * R1.E1.B) / l.sum +  
           sum(R1.mat*(  l2.B * R1.E2.B 
                       + l3.B * R1.E3.B 
-                      + l4.B * R1.E4.B))/l.sum
-  
+                      + l4.B * R1.E4.B)*exp(-adj.C + adj.sum)) / l.sum
+  # cat("R1.E ", R1.E, "\n")  
+
   R2.mat <- matrix(sapply(0:y, R2.E1), y+1, x+1) #%>% print
   R2.mat <- R2.mat * l.A.mat
-  R2.E <- sum(R2.mat * l.C.mat * l1.B * R2.E1.B)/l.sum +  
+  R2.E <- sum(R2.mat * l.C.mat * exp(adj.sum) * l1.B * R2.E1.B) / l.sum +  
           sum(R2.mat*(  l2.B * R2.E2.B 
                       + l3.B * R2.E3.B 
-                      + l4.B * R2.E4.B))/l.sum
+                      + l4.B * R2.E4.B)*exp(-adj.C + adj.sum)) / l.sum
+  # cat("R2.E ", R2.E, "\n")  
   
   log.R0.mat <- sapply(0:x, function(k) sapply(0:y, log.R0.E1, k=k))
   log.R0.mat <- log.R0.mat * l.A.mat
-  log.R0.E <- sum(log.R0.mat * l.C.mat) * l1.B + sum(log.R0.mat) * c(l2.B +  l3.B +  l4.B)
+  log.R0.E <- sum(log.R0.mat * l.C.mat) * exp(adj.sum) * l1.B + sum(log.R0.mat) * c(l2.B +  l3.B +  l4.B)*exp(-adj.C + adj.sum)
   log.R0.E <- log.R0.E +
-              sum.AC * l1.B             *  log (R0.E1.B)                             +  
-              sum.A  *    c(l2.B, l3.B, l4.B) %*% log (c(R0.E2.B, R0.E3.B, R0.E4.B))
-  log.R0.E <- log.R0.E/l.sum
+              sum.AC * exp(adj.sum) * l1.B             *  log (R0.E1.B)                             +  
+              sum.A  * c(l2.B, l3.B, l4.B) %*% log (c(R0.E2.B, R0.E3.B, R0.E4.B)) *exp(-adj.C + adj.sum)
+  log.R0.E <- log.R0.E / l.sum
   
+  # cat("log.R0.E ", log.R0.E, "\n")  
   log.R1.mat <- t(matrix(sapply(0:x, log.R1.E1), x+1, y+1))
   log.R1.mat <- log.R1.mat * l.A.mat
-  log.R1.E <- sum(log.R1.mat * l.C.mat) * l1.B + sum(log.R1.mat) * c(l2.B +  l3.B +  l4.B)
+  log.R1.E <- sum(log.R1.mat * l.C.mat) * exp(adj.sum) * l1.B + sum(log.R1.mat) * c(l2.B +  l3.B +  l4.B)*exp(-adj.C + adj.sum)
   log.R1.E <- log.R1.E +
-              sum.AC * l1.B             *  log (R1.E1.B)                             + 
-              sum.A  *    c(l2.B, l3.B, l4.B) %*% log (c(R1.E2.B, R1.E3.B, R1.E4.B))
+              sum.AC * exp(adj.sum) * l1.B             *  log (R1.E1.B)                             + 
+              sum.A  * c(l2.B, l3.B, l4.B) %*% log (c(R1.E2.B, R1.E3.B, R1.E4.B))*exp(-adj.C + adj.sum)
   log.R1.E <- log.R1.E / l.sum
   
+  # cat("log.R1.E ", log.R1.E, "\n")  
   log.R2.mat <- matrix(sapply(0:y, log.R2.E1), y+1, x+1)
   log.R2.mat <- log.R2.mat * l.A.mat
-  log.R2.E <- sum(log.R2.mat * l.C.mat) * l1.B + sum(log.R2.mat) * c(l2.B +  l3.B +  l4.B)
+  log.R2.E <- sum(log.R2.mat * l.C.mat) * exp(adj.sum) * l1.B + sum(log.R2.mat) * c(l2.B +  l3.B +  l4.B)*exp(-adj.C + adj.sum)
   log.R2.E <- log.R2.E +
-              sum.AC * l1.B                 *  log (R2.E1.B)                       + 
-              sum.A  * c(l2.B, l3.B, l4.B) %*% log (c(R2.E2.B, R2.E3.B, R2.E4.B)) 
+              sum.AC * exp(adj.sum) * l1.B                 *  log (R2.E1.B)                       + 
+              sum.A  * c(l2.B, l3.B, l4.B) %*% log (c(R2.E2.B, R2.E3.B, R2.E4.B))*exp(-adj.C + adj.sum)
   log.R2.E <- log.R2.E / l.sum
   
-  E.E <- c(sum.AC * l1.B, sum.A * c(l2.B, l3.B, l4.B))
+  # cat("log.R2.E ", log.R2.E, "\n")  
+  E.E <- c(sum.AC * exp(adj.sum) * l1.B, sum.A * c(l2.B, l3.B, l4.B)*exp(-adj.C + adj.sum))
   E.E <- E.E/sum(E.E)
   
+  # cat("E.E ", E.E, "\n")  
   #v.E <- ifelse(y == 0, 0, y) + (a0 + a2) * b2 * sum(E.E[c(2,4)])
-  v.E <- (sum.AC * l1.B * y + 
-          sum.A * l2.B * a2 * b2 +
-          dnbinom(x, a0 + a1 + 1, b1/(1+b1)) * exp(-adj) * a0 * b2 * p2 * ifelse(y==0, 1, 0) +
-          sum.A * l3.B * y +
-          sum.A * l4.B * (a0 + a2) * b2) / l.sum
+  v.E <- (sum.AC * exp(adj.sum) * l1.B * y + 
+          sum.A * l2.B * a2 * b2*exp(-adj.C + adj.sum) +
+          dnbinom(x, a0 + a1 + 1, b1/(1+b1)) * exp(-adj.A - adj.C + adj.sum) * a0 * b2 * p2 * ifelse(y==0, 1, 0) +
+          sum.A * l3.B * y *exp(-adj.C + adj.sum) +
+          sum.A * l4.B * (a0 + a2) * b2 *exp(-adj.C + adj.sum)) / l.sum
 
-  result <- c(log(l.sum) + adj, R0.E, R1.E, R2.E, log.R0.E, log.R1.E, log.R2.E, E.E, v.E) #%>%print
+  result <- c(log(l.sum) + adj.A -adj.B1 + adj.C - adj.sum, R0.E, R1.E, R2.E, log.R0.E, log.R1.E, log.R2.E, E.E, v.E) #%>%print
   names(result) <- c("logdensity", paste0("R", 0:2, ".E"), paste0("log.R", 0:2, ".E"), paste0("E",1:4,".E"), "v.E")
   return(result)
 }
@@ -171,7 +255,7 @@ ML.BvZINB4 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter = 200, sho
   n <- sum(xy.reduced$freq)
   if (max(xvec)==0 & max(yvec)==0) {return(c(rep(1e-10,5),1,0,0,0, 0, 1, 0))} # 9 params, lik, iter, pureCor
   #print(xy.reduced)
-  
+
   # initial guess
   if (is.null(initial)) {
     xbar <- mean(xvec); ybar <- mean(yvec); xybar <- mean(c(xbar, ybar))
@@ -190,7 +274,7 @@ ML.BvZINB4 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter = 200, sho
     initial <- pmax(initial, 1e-5)
     #print(initial) ###
   }
-  
+
   cor.trace <<- data.frame(iter=1, pureCor=1)
   iter = 0
   param = initial
@@ -201,8 +285,8 @@ ML.BvZINB4 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter = 200, sho
     }
   repeat {
     iter = iter + 1
-    #print(c(param))
-    #print(lik(vec, pp=param[1], m0=param[2], m1=param[3], m2=param[4])) # debug
+    # print(c(param))
+    # print(lik(vec, pp=param[1], m0=param[2], m1=param[3], m2=param[4])) # debug
     param.old <- param # saving old parameters
     
     # updating
@@ -212,7 +296,7 @@ ML.BvZINB4 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter = 200, sho
     # loglik = expt[1] * n
     delta <- expt[12] / (expt[2] + expt[4])                   # delta = E(V) / (E(xi0 + xi2))
     param[6:9] = expt[8:11]                                                    # pi = E(Z)
-    
+
     opt.vec <- function(par.ab) {
       par.ab <- exp(par.ab)
       r1 <- sum(expt[2:4]) - sum(par.ab[1:3]) * par.ab[4]
@@ -221,6 +305,7 @@ ML.BvZINB4 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter = 200, sho
       return(c(r1,r2))
     }
     param.l <- log(param)
+
     result <- try(multiroot(opt.vec, start=param.l[1:4])$root, silent=TRUE)
     if (class(result)=="try-error") {
       initial = rep(1,4)
@@ -316,7 +401,8 @@ if (FALSE) {
 # EM with booster
 # maxiter control added, output =param + lik + #iter
 # Mar 15, 2018: Print pureCor instead of cor
-ML.BvZINB4.2 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter=200, showFlag=FALSE, showPlot=FALSE, cor.conv = FALSE, boosting=TRUE) {
+ML.BvZINB4.2 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter=200, showFlag=FALSE, showPlot=FALSE, cor.conv = FALSE, boosting=TRUE, debug = FALSE) {
+  if (debug) {showFlag=TRUE}
   xy.reduced <- as.data.frame(table(xvec,yvec))
   names(xy.reduced) <- c("x", "y","freq")
   xy.reduced <- xy.reduced[xy.reduced$freq != 0,]
@@ -347,7 +433,7 @@ ML.BvZINB4.2 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter=200, sho
     if(is.na(sum(initial))) { initial[is.na(initial)] <- 1}
   # print(initial) ###
   }
-  
+# print(initial)
   booster <- function (param.matrix, xvec, yvec, n.cand = 10) {
     param.matrix[,6:9] <- qlogis(param.matrix[,6:9])  # logit transformation for probs
     param.matrix[,1:5] <- log(param.matrix[,1:5])  # log transformation for positives
@@ -374,6 +460,7 @@ ML.BvZINB4.2 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter=200, sho
   cor.trace <<- data.frame(iter=1, pureCor=1)
   iter = 0
   param = initial
+  lik = Inf
   pureCor = 0
   boost = 0
   index = 1 # previous boosting index
@@ -381,21 +468,25 @@ ML.BvZINB4.2 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter=200, sho
     par(mfrow=c(2,1))
     par(mar=c(2,4,1,4))
   }
+# cat(442)
   repeat {
     iter = iter + 1
-#print(c(param))
-#print(lik(vec, pp=param[1], m0=param[2], m1=param[3], m2=param[4])) # debug
     param.old <- param # saving old parameters
+abcd.old <<- param.old
+    if (debug) {lik.old <- lik} #debugging
     pureCor.old <- pureCor
     # updating
+# cat(449)
     expt <- dBvZINB4.Expt.vec(xy.reduced$x, xy.reduced$y, 
                               a0 = param[1], a1 = param[2], a2 = param[3], b1 = param[4], b2 = param[5], p1 = param[6], p2 = param[7], p3 = param[8], p4 = param[9])
+abc <<- expt
     expt <- as.vector(expt %*% xy.reduced$freq / n)
-#print(expt)    
+# cat(453)
     # loglik = expt[1] * n
     delta <- expt[12] / (expt[2] + expt[4])                   # delta = E(V) / (E(xi0 + xi2))
     param[6:9] = expt[8:11]                                                    # pi = E(Z)
-    
+# cat(457)
+abcd <<- param
     opt.vec <- function(par.ab) {
       par.ab <- exp(par.ab)
       r1 <- sum(expt[2:4]) - sum(par.ab[1:3]) * par.ab[4]
@@ -407,7 +498,7 @@ ML.BvZINB4.2 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter=200, sho
     param.l <- log(param)
 #expt %>% print
 #param.l %>% print
-    
+
     result <- try(multiroot(opt.vec, start=param.l[1:4])$root, silent=TRUE)
     if (class(result)=="try-error") {
       initial = rep(1,4)
@@ -416,6 +507,10 @@ ML.BvZINB4.2 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter=200, sho
     param[1:4] <- exp(result)
     param[5]   <- param[4] * delta                                       # b2
     pureCor <- stat.BvZINB4(param = param, measure = "pureCor")
+    if (debug) {
+      lik <- lik.BvZINB4(xvec, yvec, param = param)  #debugging
+      if (lik < lik.old) warnings("likelihood decreased!")
+    }
     cor.trace[iter,] <<- c(iter,pureCor)
     if (showPlot & (iter %% 20 == 0)) {
       span <- min(max(iter-200+1,1),101):iter
@@ -452,7 +547,8 @@ ML.BvZINB4.2 <- function (xvec, yvec, initial = NULL, tol=1e-8, maxiter=200, sho
     }
     
     #print (expt) #####
-    if (showFlag) {print(c(iter, round(param,5), expt[1] * n, pureCor))} #lik: lik of previous iteration
+    if (showFlag) {cat("iter ", iter, "parm:", round(param,4), if (debug) {c("D.lik=", round(lik - lik.old, 2))},
+                       "lik=", expt[1] * n, "p.Cor=", pureCor, "\n")} #lik: lik of previous iteration
     if (maxiter <= iter) {
       lik <- lik.BvZINB4(xvec, yvec, param = param)
       result <- c(param, lik, iter, pureCor)
@@ -483,7 +579,8 @@ ML.BvZINB4.2b <- function(xvec, yvec, ...) {
   return(result)
 }
 if (FALSE) {
-  ML.BvZINB4.2(extractor(11), extractor(16),showFlag=TRUE) #>-804.44 >10mins
+  ML.BvZINB4.2(extractor(11), extractor(16),showFlag=TRUE, boosting=FALSE, debug=TRUE) #>-804.44 >10mins
+  ML.BvZINB4.2(extractor(1), extractor(5),showFlag=TRUE, boosting=FALSE, debug=TRUE) #>-804.44 >10mins
   ML.BvZINB4.2(extractor(1), extractor(5),showFlag=TRUE)
   ML.BvZINB4.2b(extractor(11), extractor(16),showFlag=TRUE)
 }
