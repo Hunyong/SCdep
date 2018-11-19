@@ -47,4 +47,4 @@ library(biomaRt)
   length(Mm.c2) # 4722 Gene sets
 
 # IF fails, try saveRDS and readRDS.
-  saveRDS(iset.Mm.c2, "iset.Mm.c2.rds")
+  #saveRDS(iset.Mm.c2, "iset.Mm.c2.rds")
