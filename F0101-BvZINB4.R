@@ -1,4 +1,5 @@
 # BvZINB4: BvZINB3 + varying zero inflation parameters
+library(rootSolve)
 source("F0101-BvNB3.R")
 source("F0101-BvZINB4-supp.R")
 
@@ -52,7 +53,7 @@ dBvZINB4.Expt <- function(x, y, a0, a1, a2, b1, b2, p1, p2, p3, p4, debug = FALS
   t1 = (b1 + b2 + 1) /(b1 + 1); t2 = (b1 + b2 + 1) /(b2 + 1)
   adj.A <- adj.B1 <- adj.C <- adj.sum <- 0
   l1 <- function(k, m, adjj=0) exp(lgamma(a1 + k) - lgamma(k+1) - lgamma(a1) + lgamma(x + y + a0 -m -k) - lgamma(x -k +1) - lgamma(a0 + y - m) 
-                           + lgamma(m + a2) - lgamma(m+1) - lgamma(a2) + lgamma(y +a0 -m) - lgamma(y -m +1) - lgamma(a0) - adjj)
+                                   + lgamma(m + a2) - lgamma(m+1) - lgamma(a2) + lgamma(y +a0 -m) - lgamma(y -m +1) - lgamma(a0) - adjj)
   l1.C <- function(k, m, adjj=0) exp(k *log(t1) + m *log(t2) - adjj)
   l1.B <- - (+x+y+a0)*log(1 + b1 + b2) + x * log(b1) + y * log(b2) - a1 * log(1 + b1) - a2 * log(1 + b2)
   # l1.B to be updated several lines later depending on l2.B ~ l4.B
@@ -60,50 +61,58 @@ dBvZINB4.Expt <- function(x, y, a0, a1, a2, b1, b2, p1, p2, p3, p4, debug = FALS
   l3.B <- exp(- (y + a0 + a2)*log(1 + b2) + y * log(b2) + adj.B1) * p3 * ifelse(x==0, 1, 0)
   l4.B <- p4 * ifelse(x + y == 0, 1, 0) * exp(adj.B1)
   
+  #l2.A, l3.A added.
+  l2.A <- function(k, adjj=0) exp( lgamma(x +a0 -k) + lgamma(k + a1) - lgamma(a0) - lgamma(x-k+1) - lgamma(a1) - lgamma(k+1) - adjj)
+  l3.A <- function(m, adjj=0) exp( lgamma(y +a0 -m) + lgamma(m + a2) - lgamma(a0) - lgamma(y-m+1) - lgamma(a2) - lgamma(m+1) - adjj)
+  
+  
   # l1.AC For numerical stability use only.
   l1.AC <- function(k, m, adjj=0) exp(lgamma(a1 + k) - lgamma(k+1) - lgamma(a1) + lgamma(x + y + a0 -m -k) - lgamma(x -k +1) - lgamma(a0 + y - m) 
-                                   + lgamma(m + a2) - lgamma(m+1) - lgamma(a2) + lgamma(y +a0 -m) - lgamma(y -m +1) - lgamma(a0) + k *log(t1) + m *log(t2) - adjj)
+                                      + lgamma(m + a2) - lgamma(m+1) - lgamma(a2) + lgamma(y +a0 -m) - lgamma(y -m +1) - lgamma(a0) + k *log(t1) + m *log(t2) - adjj)
   
   
   # cat("l1.B ", l1.B,"\n")  
   if (l1.B < - 200 & log(l2.B + l3.B + l4.B) < 0) {
-if (debug) cat("adjustment activated for l1.B\n")     
+    if (debug) cat("adjustment activated for l1.B\n")     
     adj.B1 = ((-l1.B - 200) %/% 100) * 100 # prevent exp(l1.B) from being 0
     l1.B = l1.B + adj.B1
   }
   l1.B <- exp(l1.B) * p1
-if (debug)  cat("l1.B ", l1.B,"\n")  
+  if (debug)  cat("l1.B ", l1.B,"\n")  
   
-    
   
   l.A.mat <- sapply(0:x, function(k) sapply(0:y, l1, k = k, adjj = adj.A))  # %>% print
+  l2.A.mat <- sapply(0:x, l2.A, adjj = adj.A)  # %>% print
+  l3.A.mat <- sapply(0:y, l3.A, adjj = adj.A)  # %>% print
+  
   l.C.mat <- sapply(0:x, function(k) sapply(0:y, l1.C, k = k, adjj = adj.C))  # %>% print
   while (log(sum( l.A.mat)) > 250) {
-if (debug)  cat("adjustment activated for A.mat\n")     
+    ### may have to be updated for l2.A.mat and l3.A.mat ###
+    if (debug)  cat("adjustment activated for A.mat\n")     
     adj.A = adj.A + 200
     l.A.mat <- sapply(0:x, function(k) sapply(0:y, l1, k = k, adjj = adj.A))  # %>% print
   }
   while (log(sum( l.C.mat)) > 250) {
-if (debug)  cat("adjustment activated for C.mat\n")     
+    if (debug)  cat("adjustment activated for C.mat\n")     
     adj.C = adj.C + 200
     l.C.mat <- sapply(0:x, function(k) sapply(0:y, l1.C, k = k, adjj = adj.C))  # %>% print
   }
   
-# print(l.C.mat)
+  # print(l.C.mat)
   
-#   if (is.infinite(sum( l.A.mat))) {
-# cat("activated once")    
-#     adj.A = 200
-#     l.A.mat <- sapply(0:x, function(k) sapply(0:y, function(m) {l1(k =k, m = m) *exp(-adj.A)}))
-#     if (is.infinite(sum( l.A.mat))) { ## added for further adjustment
-# cat("activated twice")      
-#       adj.A = 500
-#       l.A.mat <- sapply(0:x, function(k) sapply(0:y, function(m) {l1(k =k, m = m) *exp(-adj.A)}))
-#     }  
-#   } #%>%print
+  #   if (is.infinite(sum( l.A.mat))) {
+  # cat("activated once")    
+  #     adj.A = 200
+  #     l.A.mat <- sapply(0:x, function(k) sapply(0:y, function(m) {l1(k =k, m = m) *exp(-adj.A)}))
+  #     if (is.infinite(sum( l.A.mat))) { ## added for further adjustment
+  # cat("activated twice")      
+  #       adj.A = 500
+  #       l.A.mat <- sapply(0:x, function(k) sapply(0:y, function(m) {l1(k =k, m = m) *exp(-adj.A)}))
+  #     }  
+  #   } #%>%print
   #adjustment is cancelled out for each Expectation, so can be ignored. But for the final likelihood it should be adjusted at the end.
   sum.AC <- sum(l.A.mat * l.C.mat)
-
+  
   if (is.infinite(sum.AC)| log(sum.AC) > 200) {
     if (debug) cat("adjustment activated for AC.mat (too large)\n")
     adj.A = adj.A + 100
@@ -134,17 +143,229 @@ if (debug)  cat("adjustment activated for C.mat\n")
     # Then without paranthesis, Inf * 0 = NaN,
     # But with paranthesis, c * (large number * 0) = c * 0 = 0
   }
-
-if (debug) {
-  cat("sum.AC", sum.AC,"\n\n")
-  cat("sum.A", sum.A,"\n\n")
-  cat("sum(l.C.mat)", sum(l.C.mat),"\n\n")
-  cat("l1.B", l1.B,"\n\n")
-  cat("l2.B", l2.B,"\n\n")
-  cat("l3.B", l3.B,"\n\n")
-  cat("l4.B", l4.B,"\n\n")
-  cat("l.sum ", l.sum, "\n")
+  
+  if (debug) {
+    cat("sum.AC", sum.AC,"\n\n")
+    cat("sum.A", sum.A,"\n\n")
+    cat("sum(l.C.mat)", sum(l.C.mat),"\n\n")
+    cat("l1.B", l1.B,"\n\n")
+    cat("l2.B", l2.B,"\n\n")
+    cat("l3.B", l3.B,"\n\n")
+    cat("l4.B", l4.B,"\n\n")
+    cat("l.sum ", l.sum, "\n")
+  }
+  # print(c(l.sum, log(l.sum))); print(l.A.mat); print(l.C.mat); print(c(l1.B, l2.B, l3.B, l4.B, adj.A)) #####
+  # expectation components
+  R0.E1 <- function(k, m) {x - k + y - m + a0}
+  log.R0.E1 <- function(k, m) {digamma(x - k + y - m + a0)}
+  log.R0.E2 <- function(k) {digamma(x - k + a0)}
+  log.R0.E3 <- function(m) {digamma(y - m + a0)}
+  R0.E1.B <- b1/(1 + b1 + b2)
+  R0.E2.B <- b1/(1 + b1)
+  R0.E3.B <- b1/(1 + b2)
+  R0.E4.B <- b1
+  
+  R1.E1 <- function(k) {k + a1}
+  log.R1.E1 <- function(k) {digamma(k + a1)}
+  log.R1.E2 <- function(k) {digamma(k + a1)}
+  R1.E1.B <- b1/(1 + b1)
+  R1.E2.B <- b1/(1 + b1)
+  R1.E3.B <- b1
+  R1.E4.B <- b1
+  
+  R2.E1 <- function(m) {m + a2}
+  log.R2.E1 <- function(m) {digamma(m + a2)}
+  log.R2.E3 <- function(m) {digamma(m + a2)}
+  R2.E1.B <- b1/(1 + b2)
+  R2.E2.B <- b1
+  R2.E3.B <- b1/(1 + b2)
+  R2.E4.B <- b1
+  
+  R0.mat <- sapply (0:x, function(k) sapply(0:y, R0.E1, k=k))
+  R0.mat <- R0.mat * l.A.mat
+  R0.E <- sum(R0.mat * l.C.mat * exp(adj.sum) * l1.B * R0.E1.B)  / l.sum + 
+    sum(R0.mat*(  l2.B * R0.E2.B
+                  + l3.B * R0.E3.B
+                  + l4.B * R0.E4.B)*exp(-adj.C + adj.sum)) / l.sum
+  
+  # cat("R0.E ", R0.E, "\n")  
+  R1.mat <- t(matrix(sapply(0:x, R1.E1), x+1, y+1))
+  R1.mat <- R1.mat * l.A.mat
+  R1.E <- sum(R1.mat * l.C.mat * exp(adj.sum) * l1.B * R1.E1.B) / l.sum +  
+    sum(R1.mat*(  l2.B * R1.E2.B 
+                  + l3.B * R1.E3.B 
+                  + l4.B * R1.E4.B)*exp(-adj.C + adj.sum)) / l.sum
+  # cat("R1.E ", R1.E, "\n")  
+  
+  R2.mat <- matrix(sapply(0:y, R2.E1), y+1, x+1) #%>% print
+  R2.mat <- R2.mat * l.A.mat
+  R2.E <- sum(R2.mat * l.C.mat * exp(adj.sum) * l1.B * R2.E1.B) / l.sum +  
+    sum(R2.mat*(  l2.B * R2.E2.B 
+                  + l3.B * R2.E3.B 
+                  + l4.B * R2.E4.B)*exp(-adj.C + adj.sum)) / l.sum
+  # cat("R2.E ", R2.E, "\n")  
+  
+  log.R0.mat <- sapply(0:x, function(k) sapply(0:y, log.R0.E1, k=k))
+  log.R0.mat <- l.A.mat * (log.R0.mat + log (R0.E1.B))
+  log.R0.mat2 <- sapply(0:x, log.R0.E2)
+  log.R0.mat2 <- l2.A.mat * (log.R0.mat2 + log (R0.E2.B))
+  log.R0.mat3 <- sapply(0:y, log.R0.E3)
+  log.R0.mat3 <- l3.A.mat * (log.R0.mat3 + log (R0.E3.B))
+  
+  log.R0.E <- 
+    sum(log.R0.mat * l.C.mat) * exp(adj.sum - adj.C) * l1.B + 
+    sum(log.R0.mat2 * l2.B)  * exp(adj.sum) + 
+    sum(log.R0.mat3 * l3.B)  * exp(adj.sum) + 
+    (digamma(a0) + log(b1)) * exp(adj.sum) * l4.B
+  log.R0.E <- log.R0.E / l.sum
+  
+  log.R1.mat <- sapply(0:x, log.R1.E1)
+  log.R1.mat2 <- log.R1.mat  # saving a vector form
+  log.R1.mat2 <- l2.A.mat * (log.R1.mat2 + log (R1.E2.B))
+  log.R1.mat <- t(matrix(log.R1.mat, x+1, y+1))
+  log.R1.mat <- l.A.mat * (log.R1.mat + log (R1.E1.B))
+  log.R1.mat3 <- l3.A.mat * (digamma(a1) + log(R1.E3.B))
+  
+  log.R1.E <- 
+    sum(log.R1.mat * l.C.mat) * exp(adj.sum - adj.C) * l1.B + 
+    sum(log.R1.mat2 * l2.B)  * exp(adj.sum) + 
+    sum(log.R1.mat3 * l3.B)  * exp(adj.sum) + 
+    (digamma(a1) + log(b1)) * exp(adj.sum) * l4.B
+  log.R1.E <- log.R1.E / l.sum
+  
+  
+  log.R2.mat <- sapply(0:y, log.R2.E1)
+  log.R2.mat3 <- log.R2.mat  # saving a vector form
+  log.R2.mat3 <- l3.A.mat * (log.R2.mat3 + log (R2.E3.B))
+  log.R2.mat <- matrix(log.R2.mat, y+1, x+1)
+  log.R2.mat <- l.A.mat * (log.R2.mat + log (R2.E1.B))
+  log.R2.mat2 <- l2.A.mat * (digamma(a2) + log(R2.E2.B))
+  
+  log.R2.E <- 
+    sum(log.R2.mat * l.C.mat) * exp(adj.sum - adj.C) * l1.B + 
+    sum(log.R2.mat2 * l2.B)  * exp(adj.sum) + 
+    sum(log.R2.mat3 * l3.B)  * exp(adj.sum) + 
+    (digamma(a2) + log(b1)) * exp(adj.sum) * l4.B
+  log.R2.E <- log.R2.E / l.sum
+  
+  
+  # cat("log.R2.E ", log.R2.E, "\n")  
+  E.E <- c(sum.AC * exp(adj.sum) * l1.B, sum.A * c(l2.B, l3.B, l4.B)*exp(-adj.C + adj.sum))
+  E.E <- E.E/sum(E.E)
+  
+  # cat("E.E ", E.E, "\n")  
+  v.E <- ifelse(y == 0, 0, y) + (a0 + a2) * b2 * sum(E.E[c(2,4)])
+  # v.E <- (sum.AC * exp(adj.sum) * l1.B * y + 
+  #           sum.A * l2.B * a2 * b2*exp(-adj.C + adj.sum) +
+  #           dnbinom(x, a0 + a1 + 1, b1/(1+b1)) * exp(-adj.A - adj.C + adj.sum) * a0 * b2 * p2 * ifelse(y==0, 1, 0) +
+  #           sum.A * l3.B * y *exp(-adj.C + adj.sum) +
+  #           sum.A * l4.B * (a0 + a2) * b2 *exp(-adj.C + adj.sum)) / l.sum
+  
+  result <- c(log(l.sum) + adj.A -adj.B1 + adj.C - adj.sum, R0.E, R1.E, R2.E, log.R0.E, log.R1.E, log.R2.E, E.E, v.E) #%>%print
+  names(result) <- c("logdensity", paste0("R", 0:2, ".E"), paste0("log.R", 0:2, ".E"), paste0("E",1:4,".E"), "v.E")
+  return(result)
 }
+
+
+### nonzero cells: (1-pp) was not multiplied by!!! this caused decreasing likelihood in EM
+dBvZINB4.Expt.wrong <- function(x, y, a0, a1, a2, b1, b2, p1, p2, p3, p4, debug = FALSE) {
+  # Base density
+  t1 = (b1 + b2 + 1) /(b1 + 1); t2 = (b1 + b2 + 1) /(b2 + 1)
+  adj.A <- adj.B1 <- adj.C <- adj.sum <- 0
+  l1 <- function(k, m, adjj=0) exp(lgamma(a1 + k) - lgamma(k+1) - lgamma(a1) + lgamma(x + y + a0 -m -k) - lgamma(x -k +1) - lgamma(a0 + y - m) 
+                                   + lgamma(m + a2) - lgamma(m+1) - lgamma(a2) + lgamma(y +a0 -m) - lgamma(y -m +1) - lgamma(a0) - adjj)
+  l1.C <- function(k, m, adjj=0) exp(k *log(t1) + m *log(t2) - adjj)
+  l1.B <- - (+x+y+a0)*log(1 + b1 + b2) + x * log(b1) + y * log(b2) - a1 * log(1 + b1) - a2 * log(1 + b2)
+  # l1.B to be updated several lines later depending on l2.B ~ l4.B
+  l2.B <- exp(- (x + a0 + a1)*log(1 + b1) + x * log(b1) + adj.B1) * p2 * ifelse(y==0, 1, 0)
+  l3.B <- exp(- (y + a0 + a2)*log(1 + b2) + y * log(b2) + adj.B1) * p3 * ifelse(x==0, 1, 0)
+  l4.B <- p4 * ifelse(x + y == 0, 1, 0) * exp(adj.B1)
+  
+  # l1.AC For numerical stability use only.
+  l1.AC <- function(k, m, adjj=0) exp(lgamma(a1 + k) - lgamma(k+1) - lgamma(a1) + lgamma(x + y + a0 -m -k) - lgamma(x -k +1) - lgamma(a0 + y - m) 
+                                      + lgamma(m + a2) - lgamma(m+1) - lgamma(a2) + lgamma(y +a0 -m) - lgamma(y -m +1) - lgamma(a0) + k *log(t1) + m *log(t2) - adjj)
+  
+  
+  # cat("l1.B ", l1.B,"\n")  
+  if (l1.B < - 200 & log(l2.B + l3.B + l4.B) < 0) {
+    if (debug) cat("adjustment activated for l1.B\n")     
+    adj.B1 = ((-l1.B - 200) %/% 100) * 100 # prevent exp(l1.B) from being 0
+    l1.B = l1.B + adj.B1
+  }
+  l1.B <- exp(l1.B) * p1
+  if (debug)  cat("l1.B ", l1.B,"\n")  
+  
+  
+  
+  l.A.mat <- sapply(0:x, function(k) sapply(0:y, l1, k = k, adjj = adj.A))  # %>% print
+  l.C.mat <- sapply(0:x, function(k) sapply(0:y, l1.C, k = k, adjj = adj.C))  # %>% print
+  while (log(sum( l.A.mat)) > 250) {
+    if (debug)  cat("adjustment activated for A.mat\n")     
+    adj.A = adj.A + 200
+    l.A.mat <- sapply(0:x, function(k) sapply(0:y, l1, k = k, adjj = adj.A))  # %>% print
+  }
+  while (log(sum( l.C.mat)) > 250) {
+    if (debug)  cat("adjustment activated for C.mat\n")     
+    adj.C = adj.C + 200
+    l.C.mat <- sapply(0:x, function(k) sapply(0:y, l1.C, k = k, adjj = adj.C))  # %>% print
+  }
+  
+  # print(l.C.mat)
+  
+  #   if (is.infinite(sum( l.A.mat))) {
+  # cat("activated once")    
+  #     adj.A = 200
+  #     l.A.mat <- sapply(0:x, function(k) sapply(0:y, function(m) {l1(k =k, m = m) *exp(-adj.A)}))
+  #     if (is.infinite(sum( l.A.mat))) { ## added for further adjustment
+  # cat("activated twice")      
+  #       adj.A = 500
+  #       l.A.mat <- sapply(0:x, function(k) sapply(0:y, function(m) {l1(k =k, m = m) *exp(-adj.A)}))
+  #     }  
+  #   } #%>%print
+  #adjustment is cancelled out for each Expectation, so can be ignored. But for the final likelihood it should be adjusted at the end.
+  sum.AC <- sum(l.A.mat * l.C.mat)
+  
+  if (is.infinite(sum.AC)| log(sum.AC) > 200) {
+    if (debug) cat("adjustment activated for AC.mat (too large)\n")
+    adj.A = adj.A + 100
+    adj.C = adj.C + 100
+    l.A.mat <- sapply(0:x, function(k) sapply(0:y, l1, k = k, adjj = adj.A))  # %>% print
+    l.C.mat <- sapply(0:x, function(k) sapply(0:y, l1.C, k = k, adjj = adj.C))  # %>% print
+    sum.AC <- sum(l.A.mat * l.C.mat)
+  } else if (log(sum.AC) < - 100) {
+    if (debug) cat("adjustment activated for AC.mat (too small)\n")
+    adj.A = adj.A - 200  # floor(log(sum(l.A.mat)/x/y)*2/3)
+    adj.C = adj.C - 200
+    l.A.mat <- sapply(0:x, function(k) sapply(0:y, l1, k = k, adjj = adj.A))  # %>% print
+    l.C.mat <- sapply(0:x, function(k) sapply(0:y, l1.C, k = k, adjj = adj.C))  # %>% print
+    l.AC.mat <- sapply(0:x, function(k) sapply(0:y, l1.AC, k = k, adjj = adj.C + adj.A))
+    sum.AC <- sum(l.AC.mat)
+    # abcde.1 <<- l.A.mat
+    # abcde.2 <<- l.C.mat
+    # abcde.3 <<- l.AC.mat
+  }
+  sum.A <- sum(l.A.mat)
+  l.sum <- sum.AC * l1.B + sum.A * sum (l2.B +  l3.B +  l4.B) * exp(-adj.C)
+  if (l.sum == 0) {
+    adj.sum = -floor(log(sum.AC)*2/3 + log(l1.B)*2/3)
+    if (debug) cat("adjustment activated for l.sum (adj = ", adj.sum, ")\n")
+    l.sum <- sum.AC * exp(adj.sum) * l1.B + sum.A * (exp(adj.sum) * sum (l2.B +  l3.B +  l4.B)) * exp(-adj.C)
+    # abcde.4 <<- c(l.sum = l.sum, sum.AC = sum.AC, l1.B = l1.B, sum.A = sum.A,  l2.B = l2.B, l3.B = l3.B, l4.B = l4.B, adj.C = adj.C)
+    ## paranthesis matters. sum.A = some number, exp(adj.sum) = almost inf, sum(l2.B +  l3.B +  l4.B) = 0, ...
+    # Then without paranthesis, Inf * 0 = NaN,
+    # But with paranthesis, c * (large number * 0) = c * 0 = 0
+  }
+  
+  if (debug) {
+    cat("sum.AC", sum.AC,"\n\n")
+    cat("sum.A", sum.A,"\n\n")
+    cat("sum(l.C.mat)", sum(l.C.mat),"\n\n")
+    cat("l1.B", l1.B,"\n\n")
+    cat("l2.B", l2.B,"\n\n")
+    cat("l3.B", l3.B,"\n\n")
+    cat("l4.B", l4.B,"\n\n")
+    cat("l.sum ", l.sum, "\n")
+  }
   # print(c(l.sum, log(l.sum))); print(l.A.mat); print(l.C.mat); print(c(l1.B, l2.B, l3.B, l4.B, adj.A)) #####
   # expectation components
   R0.E1 <- function(k, m) {x - k + y - m + a0}
@@ -171,33 +392,33 @@ if (debug) {
   R0.mat <- sapply (0:x, function(k) sapply(0:y, R0.E1, k=k))
   R0.mat <- R0.mat * l.A.mat
   R0.E <- sum(R0.mat * l.C.mat * exp(adj.sum) * l1.B * R0.E1.B)  / l.sum + 
-          sum(R0.mat*(  l2.B * R0.E2.B
-                      + l3.B * R0.E3.B
-                      + l4.B * R0.E4.B)*exp(-adj.C + adj.sum)) / l.sum
+    sum(R0.mat*(  l2.B * R0.E2.B
+                  + l3.B * R0.E3.B
+                  + l4.B * R0.E4.B)*exp(-adj.C + adj.sum)) / l.sum
   
   # cat("R0.E ", R0.E, "\n")  
   R1.mat <- t(matrix(sapply(0:x, R1.E1), x+1, y+1))
   R1.mat <- R1.mat * l.A.mat
   R1.E <- sum(R1.mat * l.C.mat * exp(adj.sum) * l1.B * R1.E1.B) / l.sum +  
-          sum(R1.mat*(  l2.B * R1.E2.B 
-                      + l3.B * R1.E3.B 
-                      + l4.B * R1.E4.B)*exp(-adj.C + adj.sum)) / l.sum
+    sum(R1.mat*(  l2.B * R1.E2.B 
+                  + l3.B * R1.E3.B 
+                  + l4.B * R1.E4.B)*exp(-adj.C + adj.sum)) / l.sum
   # cat("R1.E ", R1.E, "\n")  
-
+  
   R2.mat <- matrix(sapply(0:y, R2.E1), y+1, x+1) #%>% print
   R2.mat <- R2.mat * l.A.mat
   R2.E <- sum(R2.mat * l.C.mat * exp(adj.sum) * l1.B * R2.E1.B) / l.sum +  
-          sum(R2.mat*(  l2.B * R2.E2.B 
-                      + l3.B * R2.E3.B 
-                      + l4.B * R2.E4.B)*exp(-adj.C + adj.sum)) / l.sum
+    sum(R2.mat*(  l2.B * R2.E2.B 
+                  + l3.B * R2.E3.B 
+                  + l4.B * R2.E4.B)*exp(-adj.C + adj.sum)) / l.sum
   # cat("R2.E ", R2.E, "\n")  
   
   log.R0.mat <- sapply(0:x, function(k) sapply(0:y, log.R0.E1, k=k))
   log.R0.mat <- log.R0.mat * l.A.mat
   log.R0.E <- sum(log.R0.mat * l.C.mat) * exp(adj.sum) * l1.B + sum(log.R0.mat) * c(l2.B +  l3.B +  l4.B)*exp(-adj.C + adj.sum)
   log.R0.E <- log.R0.E +
-              sum.AC * exp(adj.sum) * l1.B             *  log (R0.E1.B)                             +  
-              sum.A  * c(l2.B, l3.B, l4.B) %*% log (c(R0.E2.B, R0.E3.B, R0.E4.B)) *exp(-adj.C + adj.sum)
+    sum.AC * exp(adj.sum) * l1.B             *  log (R0.E1.B)                             +  
+    sum.A  * c(l2.B, l3.B, l4.B) %*% log (c(R0.E2.B, R0.E3.B, R0.E4.B)) *exp(-adj.C + adj.sum)
   log.R0.E <- log.R0.E / l.sum
   
   # cat("log.R0.E ", log.R0.E, "\n")  
@@ -205,8 +426,8 @@ if (debug) {
   log.R1.mat <- log.R1.mat * l.A.mat
   log.R1.E <- sum(log.R1.mat * l.C.mat) * exp(adj.sum) * l1.B + sum(log.R1.mat) * c(l2.B +  l3.B +  l4.B)*exp(-adj.C + adj.sum)
   log.R1.E <- log.R1.E +
-              sum.AC * exp(adj.sum) * l1.B             *  log (R1.E1.B)                             + 
-              sum.A  * c(l2.B, l3.B, l4.B) %*% log (c(R1.E2.B, R1.E3.B, R1.E4.B))*exp(-adj.C + adj.sum)
+    sum.AC * exp(adj.sum) * l1.B             *  log (R1.E1.B)                             + 
+    sum.A  * c(l2.B, l3.B, l4.B) %*% log (c(R1.E2.B, R1.E3.B, R1.E4.B))*exp(-adj.C + adj.sum)
   log.R1.E <- log.R1.E / l.sum
   
   # cat("log.R1.E ", log.R1.E, "\n")  
@@ -214,8 +435,8 @@ if (debug) {
   log.R2.mat <- log.R2.mat * l.A.mat
   log.R2.E <- sum(log.R2.mat * l.C.mat) * exp(adj.sum) * l1.B + sum(log.R2.mat) * c(l2.B +  l3.B +  l4.B)*exp(-adj.C + adj.sum)
   log.R2.E <- log.R2.E +
-              sum.AC * exp(adj.sum) * l1.B                 *  log (R2.E1.B)                       + 
-              sum.A  * c(l2.B, l3.B, l4.B) %*% log (c(R2.E2.B, R2.E3.B, R2.E4.B))*exp(-adj.C + adj.sum)
+    sum.AC * exp(adj.sum) * l1.B                 *  log (R2.E1.B)                       + 
+    sum.A  * c(l2.B, l3.B, l4.B) %*% log (c(R2.E2.B, R2.E3.B, R2.E4.B))*exp(-adj.C + adj.sum)
   log.R2.E <- log.R2.E / l.sum
   
   # cat("log.R2.E ", log.R2.E, "\n")  
@@ -225,15 +446,17 @@ if (debug) {
   # cat("E.E ", E.E, "\n")  
   #v.E <- ifelse(y == 0, 0, y) + (a0 + a2) * b2 * sum(E.E[c(2,4)])
   v.E <- (sum.AC * exp(adj.sum) * l1.B * y + 
-          sum.A * l2.B * a2 * b2*exp(-adj.C + adj.sum) +
-          dnbinom(x, a0 + a1 + 1, b1/(1+b1)) * exp(-adj.A - adj.C + adj.sum) * a0 * b2 * p2 * ifelse(y==0, 1, 0) +
-          sum.A * l3.B * y *exp(-adj.C + adj.sum) +
-          sum.A * l4.B * (a0 + a2) * b2 *exp(-adj.C + adj.sum)) / l.sum
-
+            sum.A * l2.B * a2 * b2*exp(-adj.C + adj.sum) +
+            dnbinom(x, a0 + a1 + 1, b1/(1+b1)) * exp(-adj.A - adj.C + adj.sum) * a0 * b2 * p2 * ifelse(y==0, 1, 0) +
+            sum.A * l3.B * y *exp(-adj.C + adj.sum) +
+            sum.A * l4.B * (a0 + a2) * b2 *exp(-adj.C + adj.sum)) / l.sum
+  
   result <- c(log(l.sum) + adj.A -adj.B1 + adj.C - adj.sum, R0.E, R1.E, R2.E, log.R0.E, log.R1.E, log.R2.E, E.E, v.E) #%>%print
   names(result) <- c("logdensity", paste0("R", 0:2, ".E"), paste0("log.R", 0:2, ".E"), paste0("E",1:4,".E"), "v.E")
   return(result)
 }
+
+
 dBvZINB4.Expt.vec <- Vectorize(dBvZINB4.Expt)
 
 if (FALSE) {
